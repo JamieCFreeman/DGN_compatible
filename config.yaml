@@ -1,28 +1,12 @@
+samples: "samples.tsv"
+units: "units.tsv" 
+
 # Prefix for out directory name
 prefix: "EF_set1"
-
-samples:
-  EF2N
-  EF6N
-  EF7N
-  EF8N
-  EF11N
-  EF12N
-  EF19N
-  EF54N
-  EF59N
-  EF78N
-  EF91N
-  EF93N
-  EF95N
-  EF101N
-  EF108N
-  EF132N
 
 read_length: 150
 
 # Genome and gtf file for STAR should not be gz. STAR also requires a GTF, not GFF file.
 
-genome: "/workdir/jcf236/aabys_genome/CHR_Un/mds_ref_Musca_domestica-2.0.2_chrUn_edit_names.fa"
+genome: "/genomes/dmel_ref/DmelRef.fasta" 
 
-gtf: "/workdir/jcf236/aabys_genome/GFF/ref_Musca_domestica-2.0.2_top_level_extend400.gtf"
