@@ -30,7 +30,7 @@ rule all:
 	input:
 		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
 		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam", sample=SAMPLES)
+		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES)
 rule test:
 	input:
 		fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
@@ -48,8 +48,9 @@ rule bwa_map_1:
 		sai1 = temp( f"{OUTDIR}/bwa_aln/{{sample}}_1.sai")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/bwa_aln/{{sample}}_map1.log"
+	threads: 8
 	shell:
-		"bwa aln {params.REF} {input.fq1} > {output.sai1}"
+		"bwa aln -t {threads} {params.REF} {input.fq1} > {output.sai1}"
 
 rule bwa_map_2:
 	input:  
@@ -59,8 +60,9 @@ rule bwa_map_2:
 		sai2 = temp(f"{OUTDIR}/bwa_aln/{{sample}}_2.sai")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/bwa_align/{{sample}}_map1.log"
+	threads: 8
 	shell:  
-		"bwa aln {params.REF} {input.fq2} > {output.sai2}"
+		"bwa aln -t {threads} {params.REF} {input.fq2} > {output.sai2}"
 
 rule bwa_sampe:
 	input:
@@ -148,6 +150,25 @@ rule sort_bam:
 		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
 	shell:
 		"samtools sort {input} > {output}"
+
+# Jeremy filters out unmapped reads next with Picard CleanSam.jar
+#
+#
+
+
+# Now mark dups java -Xmx" . $mem . "g -jar " . $picard . "MarkDuplicates.jar INPUT=" . $FastqFile[$i] . "sort.bam OUTPUT=" . $FastqFile[$i] . "dups.bam METRICS_FILE=" . $FastqFile[$i] . "dups.metrics"; #IDENTIFIES DUPLICATE READS
+#
+
+rule mark_dups:
+	input:
+		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
+	output:
+		bam = f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam",
+		metrics = f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt"
+	conda:  "envs/picard.yaml"
+	shell:
+		"picard MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"	
+#		"java -Xmx4g -jar picard.jar INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"
 
 #rule fastqc:
 #	input:
