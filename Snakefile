@@ -29,9 +29,8 @@ OUTDIR = config["prefix"]
 rule all:
 	input:
 		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/logs/stampy/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES)
-
+		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
+		expand(f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam", sample=SAMPLES)
 rule test:
 	input:
 		fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
@@ -46,7 +45,7 @@ rule bwa_map_1:
 	input:
 		fq1 = "test/{sample}_1.fq"
 	output:
-		sai1 = f"{OUTDIR}/bwa_aln/{{sample}}_1.sai"
+		sai1 = temp( f"{OUTDIR}/bwa_aln/{{sample}}_1.sai")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/bwa_aln/{{sample}}_map1.log"
 	shell:
@@ -57,7 +56,7 @@ rule bwa_map_2:
 		fq2 = "test/{sample}_2.fq"
 		#fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	output: 
-		sai2 = f"{OUTDIR}/bwa_aln/{{sample}}_2.sai"
+		sai2 = temp(f"{OUTDIR}/bwa_aln/{{sample}}_2.sai")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/bwa_align/{{sample}}_map1.log"
 	shell:  
@@ -108,7 +107,7 @@ rule stampy_map:
 	input:
 		f"{OUTDIR}/bwa_aln/{{sample}}.bam"
 	output:
-		f"{OUTDIR}/stampy/{{sample}}.sam"
+		temp(f"{OUTDIR}/stampy/{{sample}}.sam")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/stampy/{{sample}}.log"
 	conda: "envs/py2.yaml"
@@ -133,6 +132,22 @@ rule stampy_flagstat:
 	shell:
 		"samtools flagstat {input} > {output}"
 		
+rule qfilter_bam:
+	input:
+		bam = f"{OUTDIR}/stampy/{{sample}}.bam",
+		stats = f"{OUTDIR}/logs/stampy/{{sample}}.stats"
+	output:
+		temp(f"{OUTDIR}/stampy/qfilter/{{sample}}.bam")
+	shell:
+		"samtools view -q 20 -h {input.bam} > {output}"
+
+rule sort_bam:
+	input:
+		f"{OUTDIR}/stampy/qfilter/{{sample}}.bam"
+	output:
+		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
+	shell:
+		"samtools sort {input} > {output}"
 
 #rule fastqc:
 #	input:
