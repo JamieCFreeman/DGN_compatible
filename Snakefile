@@ -9,9 +9,20 @@ from snakemake.utils import min_version
 
 min_version("5.18.0")
 
-SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115" ]
-  
+#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115" ]
+#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112"]
+SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115", "6Jul21-15_S116", "6Jul21-16_S117", "6Jul21-1_S102", "6Jul21-2_S103", "6Jul21-3_S104", "6Jul21-4_S105", "6Jul21-5_S106", "6Jul21-6_S107", "6Jul21-7_S108", "6Jul21-8_S109", "6Jul21-9_S110"]
+ 
 OUTDIR = config["prefix"]
+
+samples_table = pd.read_table("units.tsv", dtype=str).set_index("sample", drop=False)
+#samples_table.index = samples_table.index.set_levels( [i.astype(str) for i in samples_table.index.levels] )
+
+def fq1_from_sample(wildcards):
+	return samples_table.loc[wildcards.sample, "fq1"]
+
+def fq2_from_sample(wildcards):
+        return samples_table.loc[wildcards.sample, "fq2"]
 
 #samples = pd.read_table(config["samples"])
 #SAMPLES = samples[["sample"]]
@@ -33,15 +44,17 @@ rule all:
 		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES)
 rule test:
 	input:
-		fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
-		fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
+		fq1 = fq1_from_sample,
+		fq2 = fq2_from_sample
+#		fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
+#		fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	output:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
 	shell:
 		"zcat {input.fq1} | head -n 12000 > {output.cut1}; zcat {input.fq2} | head -n 12000 > {output.cut2}"
 
-rule bwa_map_1:
+rule bwa_aln_1:
 	input:
 		fq1 = "test/{sample}_1.fq"
 	output:
@@ -50,19 +63,19 @@ rule bwa_map_1:
 	log: f"{OUTDIR}/logs/bwa_aln/{{sample}}_map1.log"
 	threads: 8
 	shell:
-		"bwa aln -t {threads} {params.REF} {input.fq1} > {output.sai1}"
+		"bwa aln -t {threads} {params.REF} {input.fq1} 2> {log} > {output.sai1}"
 
-rule bwa_map_2:
+rule bwa_aln_2:
 	input:  
 		fq2 = "test/{sample}_2.fq"
 		#fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	output: 
 		sai2 = temp(f"{OUTDIR}/bwa_aln/{{sample}}_2.sai")
 	params: REF = config["genome"]
-	log: f"{OUTDIR}/logs/bwa_align/{{sample}}_map1.log"
+	log: f"{OUTDIR}/logs/bwa_aln/{{sample}}_map2.log"
 	threads: 8
 	shell:  
-		"bwa aln -t {threads} {params.REF} {input.fq2} > {output.sai2}"
+		"bwa aln -t {threads} {params.REF} {input.fq2} {log} > {output.sai2}"
 
 rule bwa_sampe:
 	input:
@@ -93,8 +106,9 @@ rule bwa_mem:
 	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}_map1.log"
 	output:
 		f"{OUTDIR}/bwa_mem/{{sample}}.bam"
+	threads: 8
 	shell:
-		"bwa mem -M {params.REF} {input.fq1} {input.fq2} | samtools view -bS - > {output}"
+		"bwa mem -M -t {threads} {params.REF} {input.fq1} {input.fq2} | samtools view -bS - > {output}"
 
 rule flagstat:
 	input:
