@@ -1,4 +1,6 @@
 #### 2021-8-1 JCF ####
+# Implementing Justin Lack's Drosophila Genome Nexus pipeline (https://github.com/justin-lack/Drosophila-Genome-Nexus) #
+
 
 configfile: "config.yaml"
 
@@ -9,14 +11,16 @@ from snakemake.utils import min_version
 
 min_version("5.18.0")
 
-#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115" ]
 #SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112"]
-SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115", "6Jul21-15_S116", "6Jul21-16_S117", "6Jul21-1_S102", "6Jul21-2_S103", "6Jul21-3_S104", "6Jul21-4_S105", "6Jul21-5_S106", "6Jul21-6_S107", "6Jul21-7_S108", "6Jul21-8_S109", "6Jul21-9_S110"]
+#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115", "6Jul21-15_S116", "6Jul21-16_S117", "6Jul21-1_S102", "6Jul21-2_S103", "6Jul21-3_S104", "6Jul21-4_S105", "6Jul21-5_S106", "6Jul21-6_S107", "6Jul21-7_S108", "6Jul21-8_S109", "6Jul21-9_S110"]
  
 OUTDIR = config["prefix"]
 
 samples_table = pd.read_table("units.tsv", dtype=str).set_index("sample", drop=False)
-#samples_table.index = samples_table.index.set_levels( [i.astype(str) for i in samples_table.index.levels] )
+
+# Get sample wildcards as a list
+SAMPLES= samples_table['sample'].values.tolist()
+
 
 def fq1_from_sample(wildcards):
 	return samples_table.loc[wildcards.sample, "fq1"]
@@ -24,18 +28,6 @@ def fq1_from_sample(wildcards):
 def fq2_from_sample(wildcards):
         return samples_table.loc[wildcards.sample, "fq2"]
 
-#samples = pd.read_table(config["samples"])
-#SAMPLES = samples[["sample"]]
-#units = pd.read_table(config["units"], dtype=str).set_index(
-#    ["sample", "unit"], drop=False
-#)
-#units.index = units.index.set_levels(
-#    [i.astype(str) for i in units.index.levels]
-#)  # enforce str in index
-
-#wildcard_constraints:
-#    sample="|".join(samples.index),
-#    unit="|".join(units["unit"]),
 
 rule all:
 	input:
@@ -46,8 +38,6 @@ rule test:
 	input:
 		fq1 = fq1_from_sample,
 		fq2 = fq2_from_sample
-#		fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
-#		fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	output:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
@@ -68,7 +58,6 @@ rule bwa_aln_1:
 rule bwa_aln_2:
 	input:  
 		fq2 = "test/{sample}_2.fq"
-		#fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	output: 
 		sai2 = temp(f"{OUTDIR}/bwa_aln/{{sample}}_2.sai")
 	params: REF = config["genome"]
@@ -83,8 +72,6 @@ rule bwa_sampe:
 		sai2 = f"{OUTDIR}/bwa_aln/{{sample}}_2.sai",
 		fq1 = "test/{sample}_1.fq",
 		fq2 = "test/{sample}_2.fq"
-		#fq1 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R1_001.fastq.gz",
-                #fq2 = "/home/jamie/EF_genomes/210728_AHCHLLDSX2/{sample}_L003_R2_001.fastq.gz"
 	params: REF = config["genome"]
 	output: 
 		f"{OUTDIR}/bwa_aln/{{sample}}.bam"
