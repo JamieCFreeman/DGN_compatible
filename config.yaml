@@ -1,12 +1,12 @@
 samples: "samples.tsv"
-units: "units.tsv" 
+units: "units_partial.tsv" 
 
 # Prefix for out directory name
-prefix: "EF_set1"
+prefix: "EF_testing"
 
 read_length: 150
 
 # Genome and gtf file for STAR should not be gz. STAR also requires a GTF, not GFF file.
 
-genome: "dmel_ref/DmelRef.fasta" 
+genome: "../dmel_ref/DmelRef.fasta" 
 
