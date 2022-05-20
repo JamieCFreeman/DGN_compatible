@@ -33,7 +33,9 @@ rule all:
 		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
 #		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
 		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
-		expand(f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals", sample=SAMPLES)
+		expand(f"{OUTDIR}/vcf/{{sample}}_INDELs.vcf", sample=SAMPLES),
+		expand(f"{OUTDIR}/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)		
+
 rule test:
 	input:
 		fq1 = fq1_from_sample,
@@ -42,7 +44,7 @@ rule test:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
 	shell:
-		"zcat {input.fq1} | head -n 12000 > {output.cut1}; zcat {input.fq2} | head -n 12000 > {output.cut2}"
+		"zcat {input.fq1} | head -n 50000 > {output.cut1}; zcat {input.fq2} | head -n 50000 > {output.cut2}"
 
 rule bwa_aln_1:
 	input:
@@ -164,7 +166,7 @@ rule mark_dups:
 	input:
 		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
 	output:
-		bam = f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam",
+		bam = temp(f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam"),
 		metrics = f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt"
 	conda:  "envs/picard.yaml"
 	shell:
@@ -176,7 +178,7 @@ rule add_RG:
 	input:
 		bam = f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam"
 	output:
-		f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam"
+		temp(f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam")
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
 	shell:
 		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
@@ -185,28 +187,77 @@ rule dup_bam_bai:
         input:
                 f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam"
         output:
-                f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai"
+                temp(f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai")
         shell:
                 "samtools index {input}"
 
 #IDENTIFIES INTERVAL TO BE REALIGNED AROUND INDELS
-rule indel_realignment:
+rule indel_target:
 	input:
 		bam = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam",
 		bai = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai"
 	output:
-		f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals"
+		temp(f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals")
 	params: REF = config["genome"],
 		GATKjar = config["gatk.jar"]
-	conda: "envs/java8.yaml"
+	conda: "envs/java8.yaml" # GATK needs java 8 (11 default on marula)
+	log: f"{OUTDIR}/logs/gatk/RTC/{{sample}}.log"		
 	shell:
 		"""
 		java -Xmx4g -jar {params.GATKjar} -T RealignerTargetCreator \
-			-R {params.REF} -I {input.bam} -o {output}
+			-R {params.REF} -I {input.bam} -o {output} 2> {log}
 		"""
 
+rule indel_realign:
+	input:
+		bam = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam",
+		bai = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai",
+		intervals = f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals"
+	output:
+		f"{OUTDIR}/stampy/indel_realign/{{sample}}.bam"
+	params: REF = config["genome"],
+		GATKjar = config["gatk.jar"]
+	log: f"{OUTDIR}/logs/gatk/indel_realigner/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T IndelRealigner \
+			-targetIntervals {input.intervals} \
+			-R {params.REF} -I {input.bam} -o {output} 2> {log}
+		"""
 
+rule gt_snps:
+	input:
+		bam = f"{OUTDIR}/stampy/indel_realign/{{sample}}.bam"
+	output:
+		f"{OUTDIR}/vcf/{{sample}}_SNPs.vcf"
+	params: REF = config["genome"],
+		GATKjar = config["gatk.jar"]
+	log: f"{OUTDIR}/logs/gatk/gt_snps/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T UnifiedGenotyper \
+			-mbq 10 -stand_call_conf 31 -stand_emit_conf 31 -ploidy 1 \
+			-R {params.REF} -I {input.bam} -o {output} 2> {log}
+		"""
 
+rule gt_indels:
+	input:
+		bam = f"{OUTDIR}/stampy/indel_realign/{{sample}}.bam"
+	output:
+		f"{OUTDIR}/vcf/{{sample}}_INDELs.vcf"
+	params: REF = config["genome"],
+		GATKjar = config["gatk.jar"]
+	log: f"{OUTDIR}/logs/gatk/gt_indels/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T UnifiedGenotyper \
+			-mbq 10 -stand_call_conf 31 -stand_emit_conf 31 \
+			-ploidy 1 -minIndelFrac 0.51 -minIndelCnt 3 -glm INDEL \
+			-R {params.REF} -I {input.bam} -o {output} 2> {log}
+		"""
 
 
 #rule fastqc:
