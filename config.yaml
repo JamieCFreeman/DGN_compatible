@@ -1,5 +1,4 @@
-samples: "samples.tsv"
-units: "units_partial.tsv" 
+sample_table: "units_partial.tsv" 
 
 # Prefix for out directory name
 prefix: "EF_testing"
@@ -10,3 +9,4 @@ read_length: 150
 
 genome: "../dmel_ref/DmelRef.fasta" 
 
+gatk.jar: "/home/jamie/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar"

@@ -11,12 +11,9 @@ from snakemake.utils import min_version
 
 min_version("5.18.0")
 
-#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112"]
-#SAMPLES = ["6Jul21-10_S111", "6Jul21-11_S112", "6Jul21-12_S113", "6Jul21-13_S114", "6Jul21-14_S115", "6Jul21-15_S116", "6Jul21-16_S117", "6Jul21-1_S102", "6Jul21-2_S103", "6Jul21-3_S104", "6Jul21-4_S105", "6Jul21-5_S106", "6Jul21-6_S107", "6Jul21-7_S108", "6Jul21-8_S109", "6Jul21-9_S110"]
- 
 OUTDIR = config["prefix"]
 
-samples_table = pd.read_table("units.tsv", dtype=str).set_index("sample", drop=False)
+samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
 
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
@@ -28,12 +25,15 @@ def fq1_from_sample(wildcards):
 def fq2_from_sample(wildcards):
         return samples_table.loc[wildcards.sample, "fq2"]
 
+def RG_from_sample(wildcards):
+	return samples_table.loc[wildcards.sample, "RG"]
 
 rule all:
 	input:
 		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES)
+#		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
+		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
+		expand(f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals", sample=SAMPLES)
 rule test:
 	input:
 		fq1 = fq1_from_sample,
@@ -170,6 +170,44 @@ rule mark_dups:
 	shell:
 		"picard MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"	
 #		"java -Xmx4g -jar picard.jar INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"
+
+# Function RG_from_sample provides RG info from sample table
+rule add_RG:
+	input:
+		bam = f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam"
+	output:
+		f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam"
+	params: RG= lambda wildcards: RG_from_sample(wildcards)
+	shell:
+		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
+
+rule dup_bam_bai:
+        input:
+                f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam"
+        output:
+                f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai"
+        shell:
+                "samtools index {input}"
+
+#IDENTIFIES INTERVAL TO BE REALIGNED AROUND INDELS
+rule indel_realignment:
+	input:
+		bam = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam",
+		bai = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai"
+	output:
+		f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals"
+	params: REF = config["genome"],
+		GATKjar = config["gatk.jar"]
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T RealignerTargetCreator \
+			-R {params.REF} -I {input.bam} -o {output}
+		"""
+
+
+
+
 
 #rule fastqc:
 #	input:
