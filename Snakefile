@@ -1,6 +1,8 @@
 #### 2021-8-1 JCF ####
 # Implementing Justin Lack's Drosophila Genome Nexus pipeline (https://github.com/justin-lack/Drosophila-Genome-Nexus) #
 
+# If IS testing is true, go through pipeline with small number of reads for testing the workflow. 
+ISTESTING = 'FALSE'
 
 configfile: "config.yaml"
 
@@ -18,28 +20,38 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
 
+wildcard_constraints:
+	sample="|".join(samples_table['sample'])
 
-def fq1_from_sample(wildcards):
-	return samples_table.loc[wildcards.sample, "fq1"]
+def fq1_from_sample(wildcards, ISTESTING):
+	if ISTESTING == 'TRUE':
+		words = ["test/" , wildcards.sample, "_1.fq"]
+		return "".join(words)
+	elif ISTESTING == 'FALSE':
+		return samples_table.loc[wildcards.sample, "fq1"]
 
-def fq2_from_sample(wildcards):
-        return samples_table.loc[wildcards.sample, "fq2"]
+def fq2_from_sample(wildcards, ISTESTING):
+	if ISTESTING == 'TRUE':
+		words = ["test/" , wildcards.sample, "_2.fq"]
+		return "".join(words)
+	elif ISTESTING == 'FALSE':
+		return samples_table.loc[wildcards.sample, "fq2"]
 
 def RG_from_sample(wildcards):
 	return samples_table.loc[wildcards.sample, "RG"]
 
 rule all:
 	input:
-		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
+#		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
 #		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
-		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
+#		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
 		expand(f"{OUTDIR}/vcf/{{sample}}_INDELs.vcf", sample=SAMPLES),
 		expand(f"{OUTDIR}/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)		
 
 rule test:
 	input:
-		fq1 = fq1_from_sample,
-		fq2 = fq2_from_sample
+		fq1 = lambda wc: fq1_from_sample(wc, 'FALSE'),
+		fq2 = lambda wc: fq2_from_sample(wc, 'FALSE')
 	output:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
@@ -48,7 +60,8 @@ rule test:
 
 rule bwa_aln_1:
 	input:
-		fq1 = "test/{sample}_1.fq"
+		cut1 = "test/{sample}_1.fq",
+		fq1 = lambda wc: fq1_from_sample(wc, ISTESTING)
 	output:
 		sai1 = temp( f"{OUTDIR}/bwa_aln/{{sample}}_1.sai")
 	params: REF = config["genome"]
@@ -59,26 +72,28 @@ rule bwa_aln_1:
 
 rule bwa_aln_2:
 	input:  
-		fq2 = "test/{sample}_2.fq"
+		cut2 = "test/{sample}_2.fq",
+		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING)
 	output: 
 		sai2 = temp(f"{OUTDIR}/bwa_aln/{{sample}}_2.sai")
 	params: REF = config["genome"]
 	log: f"{OUTDIR}/logs/bwa_aln/{{sample}}_map2.log"
 	threads: 8
 	shell:  
-		"bwa aln -t {threads} {params.REF} {input.fq2} {log} > {output.sai2}"
+		"bwa aln -t {threads} {params.REF} {input.fq2} 2> {log} > {output.sai2}"
 
 rule bwa_sampe:
 	input:
 		sai1 = f"{OUTDIR}/bwa_aln/{{sample}}_1.sai",
 		sai2 = f"{OUTDIR}/bwa_aln/{{sample}}_2.sai",
-		fq1 = "test/{sample}_1.fq",
-		fq2 = "test/{sample}_2.fq"
+		fq1 = lambda wc: fq1_from_sample(wc, ISTESTING),
+		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING)
 	params: REF = config["genome"]
 	output: 
 		f"{OUTDIR}/bwa_aln/{{sample}}.bam"
+	log: f"{OUTDIR}/logs/bwa_sampe/{{sample}}_map2.log"
 	shell:
-		"bwa sampe -P {params.REF} {input.sai1} {input.sai2} {input.fq1} {input.fq2} | samtools view -bS - > {output}"
+		"bwa sampe -P {params.REF} {input.sai1} {input.sai2} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
 
 rule aln_flagstat:
 	input:
@@ -125,7 +140,7 @@ rule sam2bam:
 	input:
 		f"{OUTDIR}/stampy/{{sample}}.sam"
 	output:
-		f"{OUTDIR}/stampy/{{sample}}.bam"
+		temp(f"{OUTDIR}/stampy/{{sample}}.bam")
 	shell:
 		"samtools view -bS {input} > {output}"
 
@@ -142,15 +157,15 @@ rule qfilter_bam:
 		bam = f"{OUTDIR}/stampy/{{sample}}.bam",
 		stats = f"{OUTDIR}/logs/stampy/{{sample}}.stats"
 	output:
-		temp(f"{OUTDIR}/stampy/qfilter/{{sample}}.bam")
+		temp(f"{OUTDIR}/stampy/qfilter_{{sample}}.bam")
 	shell:
 		"samtools view -q 20 -h {input.bam} > {output}"
 
 rule sort_bam:
 	input:
-		f"{OUTDIR}/stampy/qfilter/{{sample}}.bam"
+		f"{OUTDIR}/stampy/qfilter_{{sample}}.bam"
 	output:
-		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
+		f"{OUTDIR}/stampy/qfilter_{{sample}}_sort.bam"
 	shell:
 		"samtools sort {input} > {output}"
 
@@ -164,7 +179,7 @@ rule sort_bam:
 
 rule mark_dups:
 	input:
-		f"{OUTDIR}/stampy/qfilter/{{sample}}_sort.bam"
+		f"{OUTDIR}/stampy/qfilter_{{sample}}_sort.bam"
 	output:
 		bam = temp(f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam"),
 		metrics = f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt"
@@ -178,24 +193,24 @@ rule add_RG:
 	input:
 		bam = f"{OUTDIR}/stampy/mark_dup/{{sample}}.bam"
 	output:
-		temp(f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam")
+		temp(f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam")
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
 	shell:
 		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
 
 rule dup_bam_bai:
         input:
-                f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam"
+                f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam"
         output:
-                temp(f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai")
+                temp(f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam.bai")
         shell:
                 "samtools index {input}"
 
 #IDENTIFIES INTERVAL TO BE REALIGNED AROUND INDELS
 rule indel_target:
 	input:
-		bam = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam",
-		bai = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai"
+		bam = f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam",
+		bai = f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam.bai"
 	output:
 		temp(f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals")
 	params: REF = config["genome"],
@@ -210,8 +225,8 @@ rule indel_target:
 
 rule indel_realign:
 	input:
-		bam = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam",
-		bai = f"{OUTDIR}/stampy/mark_dup/RG/{{sample}}.bam.bai",
+		bam = f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam",
+		bai = f"{OUTDIR}/stampy/mark_dup/RG_{{sample}}.bam.bai",
 		intervals = f"{OUTDIR}/stampy/indel_realign/{{sample}}.intervals"
 	output:
 		f"{OUTDIR}/stampy/indel_realign/{{sample}}.bam"
@@ -221,7 +236,7 @@ rule indel_realign:
 	conda: "envs/java8.yaml"
 	shell:
 		"""
-		java -Xmx4g -jar {params.GATKjar} -T IndelRealigner \
+		java -Xmx8g -jar {params.GATKjar} -T IndelRealigner \
 			-targetIntervals {input.intervals} \
 			-R {params.REF} -I {input.bam} -o {output} 2> {log}
 		"""
