@@ -9,4 +9,8 @@ read_length: 150
 
 genome: "../dmel_ref/DmelRef.fasta" 
 
+# For gatk, give full path to jar file
 gatk.jar: "/home/jamie/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar"
+
+# For picard, each function has it's own jar, provide folder containing them
+picard.jar: "/home/jamie/picard-tools-1.79/picard-tools-1.79"

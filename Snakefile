@@ -45,8 +45,7 @@ rule all:
 #		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
 #		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
 #		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
-		expand(f"{OUTDIR}/vcf/{{sample}}_INDELs.vcf", sample=SAMPLES),
-		expand(f"{OUTDIR}/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)		
+		expand(f"{OUTDIR}/alt_ref/{{sample}}_ref.fasta", sample=SAMPLES)
 
 rule test:
 	input:
@@ -274,25 +273,64 @@ rule gt_indels:
 			-R {params.REF} -I {input.bam} -o {output} 2> {log}
 		"""
 
+rule filter_vcf:
+	input:
+		snp = f"{OUTDIR}/vcf/{{sample}}_SNPs.vcf"
+	output:
+		f"{OUTDIR}/vcf/{{sample}}_SNPs_filt.vcf"
+#	conda: "envs/snpsift.yaml"
+	shell:
+		"cp {input.snp} {output}"
 
-#rule fastqc:
-#	input:
-#		get_samples
-#	output:
-#		f"{OUTDIR}/results/fastqc/{{sample}}_fastqc.html",
-#		f"{OUTDIR}/results/fastqc/{{sample}}_fastqc.zip"
-#	threads: 4
-#	params: 
-#		outdir = f"{OUTDIR}/results/fastqc"
-#	log: f"{OUTDIR}/logs/fastqc/{{sample}}.log"
-#	conda: "envs/fastqc.yaml"	
-#	shell:
-#		"fastqc --outdir {params.outdir} --format fastq --threads {threads} {input}"
-#    
-#    
-#rule bwa_index:
-#  input:
-#  output:
-#  conda:
-#  shell:
-#
+rule add_snps_alt_ref:
+	input:
+		f"{OUTDIR}/vcf/{{sample}}_SNPs_filt.vcf"
+	output:
+		f"{OUTDIR}/alt_ref/{{sample}}_SNPs_ref.fasta"
+	params: REF = config["genome"],
+		GATKjar = config["gatk.jar"]
+	log: f"{OUTDIR}/logs/gatk/alt_ref_SNPs/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T FastaAlternateReferenceMaker \
+			-R {params.REF} -V {input} -o {output} 2> {log}
+		"""
+
+rule alt_ref_index:
+	input:
+		f"{OUTDIR}/alt_ref/{{sample}}_SNPs_ref.fasta"
+	output:
+		f"{OUTDIR}/alt_ref/{{sample}}_SNPs_ref.dict"	
+	params: REF = config["genome"],
+		picardjar = config["picard.jar"]
+	log: f"{OUTDIR}/logs/gatk/alt_ref_index/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		samtools faidx {input}; \
+		java -Xmx4g -jar {params.picardjar}/CreateSequenceDictionary.jar \
+			REFERENCE={input} OUTPUT={output} 2> {log}
+		"""
+
+rule add_indel_alt_ref:
+	input:
+		ref = f"{OUTDIR}/alt_ref/{{sample}}_SNPs_ref.fasta",
+		dict = f"{OUTDIR}/alt_ref/{{sample}}_SNPs_ref.dict",
+		indel = f"{OUTDIR}/vcf/{{sample}}_INDELs.vcf"
+	output:
+		f"{OUTDIR}/alt_ref/{{sample}}_ref.fasta"	
+	params: GATKjar = config["gatk.jar"]
+	log: f"{OUTDIR}/logs/gatk/alt_ref_indel/{{sample}}.log"
+	conda: "envs/java8.yaml"
+	shell:
+		"""
+		java -Xmx4g -jar {params.GATKjar} -T FastaAlternateReferenceMaker \
+			-R {input.ref} -V {input.indel} -o {output} 2> {log} 
+		"""
+
+
+
+
+
+
