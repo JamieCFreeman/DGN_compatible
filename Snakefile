@@ -22,7 +22,7 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 2 
+ROUND = 2  
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -81,7 +81,7 @@ rule round1:
 rule round2:
 	input:
 		f"{OUTDIR}/round2_index.ok",
-		expand(f"{OUTDIR}/round2/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)
+		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf", sample=SAMPLES)
 
 rule test:
 	input:
@@ -137,7 +137,7 @@ rule bwa_sampe:
 		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output: 
-		f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam"
+		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam")
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_sampe/{{sample}}_map2.log"
 	shell:
 		"bwa sampe -P {input.REF} {input.sai1} {input.sai2} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
@@ -168,7 +168,6 @@ rule flagstat:
 		f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
-
 
 rule stampy_map:
 	input:
@@ -213,7 +212,7 @@ rule sort_bam:
 	input:
 		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}.bam"
 	output:
-		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam"
+		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam")
 	shell:
 		"samtools sort {input} > {output}"
 
@@ -292,23 +291,29 @@ rule indel_realign:
 			-targetIntervals {input.intervals} \
 			-R {input.REF} -I {input.bam} -o {output} 2> {log}
 		"""
+def get_UnifGen_params(ROUND):
+        if ROUND == 1:
+                return ["-ploidy 1"]
+        elif ROUND == 2:
+                return "".join(["-ploidy ", config["ploidy"], " -out_mode EMIT_ALL_SITES"])
+                
 
 rule gt_snps:
 	input:
 		bam = f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.bam",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_SNPs.vcf"
+		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_SNPs.vcf"
 	params: 
-		#REF = config["genome"],
-		GATKjar = config["gatk.jar"]
+		GATKjar = config["gatk.jar"],
+		static = "-mbq 10 -stand_call_conf 31 -stand_emit_conf 31",
+		round = get_UnifGen_params(ROUND)
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/gt_snps/{{sample}}.log"
 	conda: "envs/java8.yaml"
 	shell:
 		"""
 		java -Xmx4g -jar {params.GATKjar} -T UnifiedGenotyper \
-			-mbq 10 -stand_call_conf 31 -stand_emit_conf 31 -ploidy 1 \
-			-R {input.REF} -I {input.bam} -o {output} 2> {log}
+			{params.static} {params.round} -R {input.REF} -I {input.bam} -o {output} 2> {log}
 		"""
 
 rule gt_indels:
@@ -381,7 +386,7 @@ rule add_indel_alt_ref:
 	input:
 		ref = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta",
 		dict = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.dict",
-		indel = f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_INDELs.vcf"
+		indel = f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_INDELs.vcf"
 	output:
 		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta"	
 	params: GATKjar = config["gatk.jar"]

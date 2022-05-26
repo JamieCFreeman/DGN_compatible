@@ -5,7 +5,10 @@ prefix: "EF_testing"
 
 read_length: 150
 
-# Genome and gtf file for STAR should not be gz. STAR also requires a GTF, not GFF file.
+# Ploidy
+ploidy: "2"    # needs to be quoted so it's a string or will have type error
+
+# Genome
 
 genome: "../dmel_ref/DmelRef.fasta" 
 
