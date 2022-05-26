@@ -16,15 +16,13 @@ min_version("5.18.0")
 #OUTDIR = config["prefix"]
 OUTDIR = "round_testing"
 
-#include: "rules/genome_indexing.smk"
-
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
 
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 2
+ROUND = 2 
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -62,6 +60,8 @@ def get_ref_idx(wildcards, ROUND, OUTDIR, idxtype):
 def RG_from_sample(wildcards):
 	return samples_table.loc[wildcards.sample, "RG"]
 
+include: "rules/genome_indexing.smk"
+
 rule all:
 	input:
 #		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
@@ -71,45 +71,23 @@ rule all:
 		expand(f"{OUTDIR}/round{ROUND}_index.ok"),
 		expand(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.bwt", sample=SAMPLES)
 
-rule round1_index_ok:
-# Check for presence of all index files for Dmel ref genome
+# Target rules for round 1 & 2
+rule round1:
+# Produces the updated ref fasta
 	input:
-		fai = lambda wc: get_ref_idx(wc, 1, OUTDIR, ".fai"),
-		stidx = lambda wc: get_ref_idx(wc, 1, OUTDIR, ".stidx"),
-		sthash = lambda wc: get_ref_idx(wc, 1, OUTDIR, ".sthash"),
-		bwt = lambda wc: get_ref_idx(wc, 1, OUTDIR, ".bwt")
-		#dict = lambda wc: get_ref_idx(wc, 1, OUTDIR, ".dict")
-	output:
-		f"{OUTDIR}/round1_index.ok"
-	shell:
-		"touch {output}"	
-		
-rule round2_index_ok:
-# Check for presence of all sample-specific genome index files
-	input:
-		fai = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.fai",
-		stidx =  f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.stidx",
-		sthash = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.sthash",
-		bwt = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.bwt",
-		dict = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.dict"
-	output:
-		temp(f"{OUTDIR}/round2_{{sample}}_index.ok")
-	shell:
-		"touch {output}"	
+		f"{OUTDIR}/round1_index.ok",
+		expand(f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta", sample=SAMPLES)
 
-rule all_round2_index_ok:
-# Input all sample-specific ref, output 1 file to indicate all ref good
+rule round2:
 	input:
-		expand(f"{OUTDIR}/round2_{{sample}}_index.ok", sample=SAMPLES)
-	output:
-		f"{OUTDIR}/round2_index.ok"
-	shell:
-		"touch {output}"
-		
+		f"{OUTDIR}/round2_index.ok",
+		expand(f"{OUTDIR}/round2/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)
+
 rule test:
 	input:
 		fq1 = lambda wc: fq1_from_sample(wc, 'FALSE'),
-		fq2 = lambda wc: fq2_from_sample(wc, 'FALSE')
+		fq2 = lambda wc: fq2_from_sample(wc, 'FALSE'),
+		index_ok = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
@@ -338,7 +316,7 @@ rule gt_indels:
 		bam = f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.bam",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_INDELs.vcf"
+		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_INDELs.vcf"
 	params: 
 		#REF = config["genome"],
 		GATKjar = config["gatk.jar"]
@@ -355,18 +333,18 @@ rule gt_indels:
 rule filter_vcf:
 # Jeremy's perl script to filter snps <75% reads takes all 
 	input:
-		expand(f"{OUTDIR}/round1/vcf/{{sample}}_SNPs.vcf", sample=SAMPLES)
+		f"{OUTDIR}/round1/vcf/{{sample}}_round1_SNPs.vcf"
 	output:
-		f"{OUTDIR}/round1/vcf/{{sample}}_SNPs_filtered.vcf"
-#	conda: "envs/snpsift.yaml"
+		f"{OUTDIR}/round1/vcf/{{sample}}_round1_SNPs_filtered.vcf"
+	conda: "envs/snpsift.yaml"
 	shell:
 		"""
-		cd OUTDIR/round1/vcf; perl ./scripts/VCF_filter.pl; cd ../../..
+		SnpSift filter "( GEN[0].AD[1]/GEN[0].DP > 0.75)" {input} > {output}
 		"""
 
 rule add_snps_alt_ref:
 	input:
-		vcf = f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_SNPs_filt.vcf",
+		vcf = f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_SNPs_filtered.vcf",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
 		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta"
@@ -415,44 +393,3 @@ rule add_indel_alt_ref:
 			-R {input.ref} -V {input.indel} -o {output} 2> {log} 
 		"""
 
-rule bwa_index:
-	input:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta"
-	output:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.bwt"
-	shell:
-		"bwa index -a bwtsw {input}"	
-
-rule stampy_index:
-	input:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta"
-	output:
-		stidx = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.stidx",
-		sthash = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.sthash"
-	params: stampy = "/opt/bioscript/stampy/stampy.py"
-	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_index.log" 
-	conda: "envs/py2.yaml"
-	shell:
-		"""
-		TEMP_FILE=`echo {output.stidx} | sed 's ^.*alt_ref/  '| sed 's/.stidx//'`; echo $TEMP_FILE #stampy writes stidx file to working dir
-		python {params.stampy} -G {wildcards.sample}_ref.fasta {input} # build genome file
-		mv $TEMP_FILE.stidx {output.stidx} # move stidx to alt_ref folder
-		python {params.stampy} -g {input} -H {wildcards.sample}_ref.fasta # build hash table
-		mv $TEMP_FILE.sthash {output.sthash}
-		"""
-
-
-rule gatk_seq_dict:
-	input:
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
-	output:
-		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.dict"	
-	params: 
-		picardjar = config["picard.jar"]
-	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_index/{{sample}}.log"
-	conda: "envs/java8.yaml"
-	shell:
-		"""
-		java -Xmx4g -jar {params.picardjar}/CreateSequenceDictionary.jar \
-			REFERENCE={input.REF} OUTPUT={output} 2> {log}
-		"""
