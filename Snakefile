@@ -2,7 +2,7 @@
 # Implementing Justin Lack's Drosophila Genome Nexus pipeline (https://github.com/justin-lack/Drosophila-Genome-Nexus) #
 
 # If IS testing is true, go through pipeline with small number of reads for testing the workflow. 
-ISTESTING = 'TRUE'
+ISTESTING = 'FALSE'
 
 configfile: "config.yaml"
 
@@ -13,8 +13,8 @@ from snakemake.utils import min_version
 
 min_version("5.18.0")
 
-#OUTDIR = config["prefix"]
-OUTDIR = "round_testing"
+OUTDIR = config["prefix"]
+#OUTDIR = "round_testing"
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
@@ -22,7 +22,7 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 2  
+ROUND = 1  
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -75,6 +75,7 @@ rule all:
 rule round1:
 # Produces the updated ref fasta
 	input:
+		expand("test/{sample}_1.fq", sample=SAMPLES),
 		f"{OUTDIR}/round1_index.ok",
 		expand(f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta", sample=SAMPLES)
 
@@ -105,27 +106,25 @@ rule ref_fai:
 
 rule bwa_aln_1:
 	input:
-		cut1 = "test/{sample}_1.fq",
 		fq1 = lambda wc: fq1_from_sample(wc, ISTESTING),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
 		sai1 = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai")
 #	params: REF = config["genome"]
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map1.log"
-	threads: 8
+	threads: 10
 	shell:
 		"bwa aln -t {threads} {input.REF} {input.fq1} 2> {log} > {output.sai1}"
 
 rule bwa_aln_2:
 	input:  
-		cut2 = "test/{sample}_2.fq",
 		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output: 
 		sai2 = temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai")
 #	params: REF = config["genome"]
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map2.log"
-	threads: 8
+	threads: 10
 	shell:  
 		"bwa aln -t {threads} {input.REF} {input.fq2} 2> {log} > {output.sai2}"
 
@@ -291,6 +290,7 @@ rule indel_realign:
 			-targetIntervals {input.intervals} \
 			-R {input.REF} -I {input.bam} -o {output} 2> {log}
 		"""
+
 def get_UnifGen_params(ROUND):
         if ROUND == 1:
                 return ["-ploidy 1"]
@@ -336,7 +336,8 @@ rule gt_indels:
 		"""
 
 rule filter_vcf:
-# Jeremy's perl script to filter snps <75% reads takes all 
+# Jeremy's perl script filters snps supported by <75% (not <=75%!) reads takes all files as
+# 	input, must be run in directory, get many div by 0 errors?
 	input:
 		f"{OUTDIR}/round1/vcf/{{sample}}_round1_SNPs.vcf"
 	output:
