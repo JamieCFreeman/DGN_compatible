@@ -36,21 +36,28 @@ rule all_round2_index_ok:
 		
 rule bwa_index:
 	input:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta",
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
+		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta",
 	output:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.bwt"
+		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.bwt"
 	shell:
 		"bwa index -a bwtsw {input}"	
 
+rule ref_fai:
+	input:
+		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta"
+	output:
+		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.fai"
+	shell:
+		"samtools faidx {input}"
+
 rule stampy_index:
 	input:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta"
+		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta"
 	output:
-		stidx = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.stidx",
-		sthash = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.sthash"
+		stidx = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.stidx",
+		sthash = f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.sthash"
 	params: stampy = "/opt/bioscript/stampy/stampy.py"
-	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_index.log" 
+	log: f"{OUTDIR}/round1/logs/stampy/{{sample}}_index.log" 
 	conda: "../envs/py2.yaml"
 	shell:
 		"""
@@ -69,7 +76,7 @@ rule gatk_seq_dict:
 		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.dict"	
 	params: 
 		picardjar = config["picard.jar"]
-	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_index/{{sample}}.log"
+	log: f"{OUTDIR}/round1/logs/gatk/alt_ref_index/{{sample}}.log"
 	conda: "../envs/java8.yaml"
 	shell:
 		"""

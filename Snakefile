@@ -28,19 +28,12 @@ ROUND = 1
 wildcard_constraints:
 	sample="|".join(samples_table['sample'])
 
-def fq1_from_sample(wildcards, ISTESTING):
+def fq_from_sample(wildcards, ISTESTING, READ):
 	if ISTESTING == 'TRUE':
-		words = ["test/" , wildcards.sample, "_1.fq"]
+		words = ["test/" , wildcards.sample, "_", READ, ".fq"]
 		return "".join(words)
 	elif ISTESTING == 'FALSE':
-		return samples_table.loc[wildcards.sample, "fq1"]
-
-def fq2_from_sample(wildcards, ISTESTING):
-	if ISTESTING == 'TRUE':
-		words = ["test/" , wildcards.sample, "_2.fq"]
-		return "".join(words)
-	elif ISTESTING == 'FALSE':
-		return samples_table.loc[wildcards.sample, "fq2"]
+		return samples_table.loc[wildcards.sample, "fq"+ READ]
 
 def get_ref_fa(wildcards, ROUND, OUTDIR):
 	if ROUND == 1:
@@ -86,8 +79,8 @@ rule round2:
 
 rule test:
 	input:
-		fq1 = lambda wc: fq1_from_sample(wc, 'FALSE'),
-		fq2 = lambda wc: fq2_from_sample(wc, 'FALSE'),
+		fq1 = lambda wc: fq_from_sample(wc, 'FALSE', '1'),
+		fq2 = lambda wc: fq_from_sample(wc, 'FALSE', '2'),
 		index_ok = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
 		cut1 = "test/{sample}_1.fq",
@@ -95,19 +88,11 @@ rule test:
 	shell:
 		"zcat {input.fq1} | head -n 50000 > {output.cut1}; zcat {input.fq2} | head -n 50000 > {output.cut2}"
 
-rule ref_fai:
-	input:
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
-	output:
-		f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta.fai"
-#		REF_fai = lambda wc: get_ref_idx(wc, ROUND, OUTDIR, "fai")		
-	shell:
-		"samtools faidx {input.REF}"
-
 rule bwa_aln_1:
 	input:
-		fq1 = lambda wc: fq1_from_sample(wc, ISTESTING),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
+		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
+		index = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
 		sai1 = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai")
 #	params: REF = config["genome"]
@@ -118,8 +103,9 @@ rule bwa_aln_1:
 
 rule bwa_aln_2:
 	input:  
-		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
+		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
+		index = f"{OUTDIR}/round{ROUND}_index.ok"
 	output: 
 		sai2 = temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai")
 #	params: REF = config["genome"]
@@ -132,8 +118,8 @@ rule bwa_sampe:
 	input:
 		sai1 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai",
 		sai2 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai",
-		fq1 = lambda wc: fq1_from_sample(wc, ISTESTING),
-		fq2 = lambda wc: fq2_from_sample(wc, ISTESTING),
+		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
+		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output: 
 		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam")
@@ -219,10 +205,6 @@ rule sort_bam:
 #
 #
 
-
-# Now mark dups java -Xmx" . $mem . "g -jar " . $picard . "MarkDuplicates.jar INPUT=" . $FastqFile[$i] . "sort.bam OUTPUT=" . $FastqFile[$i] . "dups.bam METRICS_FILE=" . $FastqFile[$i] . "dups.metrics"; #IDENTIFIES DUPLICATE READS
-#
-
 rule mark_dups:
 	input:
 		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam"
@@ -261,7 +243,6 @@ rule indel_target:
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.intervals")
 	params: 
-		#REF = config["genome"],
 		GATKjar = config["gatk.jar"]
 	conda: "envs/java8.yaml" # GATK needs java 8 (11 default on marula)
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/RTC/{{sample}}.log"		
@@ -280,7 +261,6 @@ rule indel_realign:
 	output:
 		f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.bam"
 	params: 
-		#REF = config["genome"],
 		GATKjar = config["gatk.jar"]
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/indel_realigner/{{sample}}.log"
 	conda: "envs/java8.yaml"
@@ -323,7 +303,6 @@ rule gt_indels:
 	output:
 		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_INDELs.vcf"
 	params: 
-		#REF = config["genome"],
 		GATKjar = config["gatk.jar"]
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/gt_indels/{{sample}}.log"
 	conda: "envs/java8.yaml"
@@ -355,10 +334,9 @@ rule add_snps_alt_ref:
 	output:
 		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta"
 	params: 
-		#REF = config["genome"],
 		GATKjar = config["gatk.jar"]
-	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_SNPs/{{sample}}.log"
 	conda: "envs/java8.yaml"
+	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_snps/{{sample}}.log"
 	shell:
 		"""
 		java -Xmx4g -jar {params.GATKjar} -T FastaAlternateReferenceMaker \
@@ -372,7 +350,6 @@ rule alt_ref_index:
 	output:
 		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.dict"	
 	params: 
-		#REF = config["genome"],
 		picardjar = config["picard.jar"]
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_index/{{sample}}.log"
 	conda: "envs/java8.yaml"
