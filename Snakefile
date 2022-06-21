@@ -22,7 +22,7 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 1  
+ROUND = 2   
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -53,7 +53,9 @@ def get_ref_idx(wildcards, ROUND, OUTDIR, idxtype):
 def RG_from_sample(wildcards):
 	return samples_table.loc[wildcards.sample, "RG"]
 
-include: "rules/genome_indexing.smk"
+include: 
+	"rules/genome_indexing.smk",
+	"rules/qc.smk"
 
 rule all:
 	input:
@@ -66,16 +68,26 @@ rule all:
 
 # Target rules for round 1 & 2
 rule round1:
-# Produces the updated ref fasta
+	# Produces the updated ref fasta
 	input:
 		expand("test/{sample}_1.fq", sample=SAMPLES),
 		f"{OUTDIR}/round1_index.ok",
-		expand(f"{OUTDIR}/round1/alt_ref/{{sample}}_ref.fasta", sample=SAMPLES)
+		expand(f"{OUTDIR}/round1/alt_ref_for_chtc/{{sample}}_ref.fasta.tgz", sample=SAMPLES)
 
 rule round2:
 	input:
-		f"{OUTDIR}/round2_index.ok",
-		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf", sample=SAMPLES)
+#		f"{OUTDIR}/round2_index.ok",
+		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", sample=SAMPLES)
+
+rule qc:
+	input:
+#		expand(f"{OUTDIR}/round{ROUND}/qc/multiqc/{{pre}}_multiqc_report.html", pre=config["prefix"])	
+		expand(f"{OUTDIR}/round{ROUND}/qc/bamqc/{{sample}}_stats", sample=SAMPLES)
+
+rule round2_index:
+	input:
+		expand(f"{OUTDIR}/round2_{{sample}}_index.ok", sample=SAMPLES)
+#		f"{OUTDIR}/round2_index.ok"
 
 rule test:
 	input:
@@ -91,11 +103,10 @@ rule test:
 rule bwa_aln_1:
 	input:
 		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
-		index = f"{OUTDIR}/round{ROUND}_index.ok"
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR) #,
+#		index = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
 		sai1 = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai")
-#	params: REF = config["genome"]
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map1.log"
 	threads: 10
 	shell:
@@ -104,11 +115,10 @@ rule bwa_aln_1:
 rule bwa_aln_2:
 	input:  
 		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
-		index = f"{OUTDIR}/round{ROUND}_index.ok"
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR) #,
+#		index = f"{OUTDIR}/round{ROUND}_index.ok"
 	output: 
 		sai2 = temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai")
-#	params: REF = config["genome"]
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map2.log"
 	threads: 10
 	shell:  
@@ -207,38 +217,41 @@ rule sort_bam:
 
 rule mark_dups:
 	input:
-		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam"
+		f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam"
 	output:
 		bam = temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"),
 		metrics = f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_dups.txt"
 	conda:  "envs/picard.yaml"
+	resources:
+		mem_Gb = 3
+	benchmark:
+		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.markdup.benchmark.txt"
 	shell:
 		"picard MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"	
-#		"java -Xmx4g -jar picard.jar INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"
 
 # Function RG_from_sample provides RG info from sample table
 rule add_RG:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"
+		bam = f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam")
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
 	shell:
 		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
 
 rule dup_bam_bai:
         input:
-                f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam"
+                f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"
         output:
-                temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam.bai")
+                temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai")
         shell:
                 "samtools index {input}"
 
 #IDENTIFIES INTERVAL TO BE REALIGNED AROUND INDELS
 rule indel_target:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam",
-		bai = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam.bai",
+		bam = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam",
+		bai = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.intervals")
@@ -246,6 +259,8 @@ rule indel_target:
 		GATKjar = config["gatk.jar"]
 	conda: "envs/java8.yaml" # GATK needs java 8 (11 default on marula)
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/RTC/{{sample}}.log"		
+	benchmark:
+		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.RTC.benchmark.txt"
 	shell:
 		"""
 		java -Xmx4g -jar {params.GATKjar} -T RealignerTargetCreator \
@@ -254,8 +269,8 @@ rule indel_target:
 
 rule indel_realign:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam",
-		bai = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/RG_{{sample}}.bam.bai",
+		bam = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam",
+		bai = f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai",
 		intervals = f"{OUTDIR}/round{ROUND}/stampy/indel_realign/{{sample}}.intervals",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
@@ -264,6 +279,10 @@ rule indel_realign:
 		GATKjar = config["gatk.jar"]
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/indel_realigner/{{sample}}.log"
 	conda: "envs/java8.yaml"
+	resources:
+		mem_Gb = 2
+	benchmark:
+		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.indelrealign.benchmark.txt"
 	shell:
 		"""
 		java -Xmx8g -jar {params.GATKjar} -T IndelRealigner \
@@ -295,6 +314,16 @@ rule gt_snps:
 		java -Xmx4g -jar {params.GATKjar} -T UnifiedGenotyper \
 			{params.static} {params.round} -R {input.REF} -I {input.bam} -o {output} 2> {log}
 		"""
+
+rule gz_vcf:
+	input:
+		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_SNPs.vcf"
+	output:
+		f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_SNPs.vcf.gz"
+	shell:
+		"""
+		gzip {input}
+		"""	
 
 rule gt_indels:
 	input:
@@ -332,7 +361,7 @@ rule add_snps_alt_ref:
 		vcf = f"{OUTDIR}/round{ROUND}/vcf/{{sample}}_round{ROUND}_SNPs_filtered.vcf",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta"
+		temp(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta")
 	params: 
 		GATKjar = config["gatk.jar"]
 	conda: "envs/java8.yaml"
@@ -348,7 +377,7 @@ rule alt_ref_index:
 		fa = f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.fasta",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.dict"	
+		temp(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_SNPs_ref.dict")	
 	params: 
 		picardjar = config["picard.jar"]
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/alt_ref_index/{{sample}}.log"
@@ -376,3 +405,14 @@ rule add_indel_alt_ref:
 			-R {input.ref} -V {input.indel} -o {output} 2> {log} 
 		"""
 
+rule tgz_alt_ref:
+	input:
+		f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta"
+	output:
+		f"{OUTDIR}/round{ROUND}/alt_ref_for_chtc/{{sample}}_ref.fasta.tgz"
+	params:
+		dir = f"{OUTDIR}/round{ROUND}/alt_ref"
+	shell:
+		"""
+		tar -C {params.dir} -czf {output} $( basename {input} )
+		"""
