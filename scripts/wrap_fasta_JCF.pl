@@ -26,9 +26,10 @@ while(<F>){
 $seq_length=@sequence;
 $num_rows=int($seq_length/1000);
 $count=0;
-@output=split '.f', $fasta_file;
+@output=split '.fa', $fasta_file;
 $output_file=$output[0].'.fas1k';
-open O, ">$output_file";
+print "Writing to output $output_file\n";
+open O, ">$output_file" or die "cannot write to $output_file\n";
 for($j=0;$j<$num_rows;$j++){
 	print O @sequence[$count .. $count+999];
 	print O "\n";

@@ -11,10 +11,9 @@ import pandas as pd
 from snakemake.utils import validate
 from snakemake.utils import min_version
 
-min_version("5.18.0")
+min_version("7.0.0")
 
 OUTDIR = config["prefix"]
-#OUTDIR = "round_testing"
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
@@ -22,7 +21,7 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 2   
+ROUND = 1   
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
