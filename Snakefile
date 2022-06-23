@@ -21,7 +21,7 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
  
-ROUND = 1   
+ROUND = 2   
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -75,7 +75,7 @@ rule round1:
 
 rule round2:
 	input:
-#		f"{OUTDIR}/round2_index.ok",
+		f"{OUTDIR}/round2_index.ok",
 		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", sample=SAMPLES)
 
 rule qc:
@@ -88,6 +88,9 @@ rule round2_index:
 		expand(f"{OUTDIR}/round2_{{sample}}_index.ok", sample=SAMPLES)
 #		f"{OUTDIR}/round2_index.ok"
 
+rule mem_stats:
+		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES)
+
 rule test:
 	input:
 		fq1 = lambda wc: fq_from_sample(wc, 'FALSE', '1'),
@@ -97,7 +100,7 @@ rule test:
 		cut1 = "test/{sample}_1.fq",
 		cut2 = "test/{sample}_2.fq"
 	shell:
-		"zcat {input.fq1} | head -n 50000 > {output.cut1}; zcat {input.fq2} | head -n 50000 > {output.cut2}"
+		"zcat {input.fq1} | awk '(NR<=50000)' > {output.cut1}; zcat {input.fq2} | awk '(NR<=50000)' > {output.cut2}"
 
 rule bwa_aln_1:
 	input:
@@ -145,15 +148,18 @@ rule aln_flagstat:
 		"samtools flagstat {input} > {output}"
 rule bwa_mem:
 	input:
-		fq1 = "test/{sample}_1.fq",
-		fq2 = "test/{sample}_2.fq"
+		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
+		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
+	output:
+		f"{OUTDIR}/logs/bwa_mem/{{sample}}.log" 
 	params: REF = config["genome"]
-	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}_map1.log"
+	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}.log"
 	output:
 		f"{OUTDIR}/bwa_mem/{{sample}}.bam"
 	threads: 8
 	shell:
-		"bwa mem -M -t {threads} {params.REF} {input.fq1} {input.fq2} | samtools view -bS - > {output}"
+		"bwa mem -M -t {threads} {input.REF} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
 
 rule flagstat:
 	input:
