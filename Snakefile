@@ -89,6 +89,7 @@ rule round2_index:
 #		f"{OUTDIR}/round2_index.ok"
 
 rule mem_stats:
+	input:
 		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES)
 
 rule test:
@@ -152,11 +153,9 @@ rule bwa_mem:
 		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/logs/bwa_mem/{{sample}}.log" 
+		f"{OUTDIR}/bwa_mem/{{sample}}.bam" 
 	params: REF = config["genome"]
 	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}.log"
-	output:
-		f"{OUTDIR}/bwa_mem/{{sample}}.bam"
 	threads: 8
 	shell:
 		"bwa mem -M -t {threads} {input.REF} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
