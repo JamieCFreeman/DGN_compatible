@@ -1,27 +1,24 @@
 #### 2021-8-1 JCF ####
 # Implementing Justin Lack's Drosophila Genome Nexus pipeline (https://github.com/justin-lack/Drosophila-Genome-Nexus) #
 
-# If IS testing is true, go through pipeline with small number of reads for testing the workflow. 
-ISTESTING = 'FALSE'
-
-configfile: "config.yaml"
-
 import pandas as pd
-
 from snakemake.utils import validate
 from snakemake.utils import min_version
-
 min_version("7.0.0")
 
+# Pass through variables from config file
+configfile: "config.yaml"
 OUTDIR = config["prefix"]
+# If IS testing is true, go through pipeline with small number of reads for testing the workflow. 
+ISTESTING = config["ISTESTING"]
+# Are you doing round 1 mapping or round 2 mapping?
+ROUND = config["ROUND"]
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
 
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
- 
-ROUND = 2   
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
@@ -58,8 +55,6 @@ include:
 
 rule all:
 	input:
-#		expand(f"{OUTDIR}/logs/bwa_aln/{{sample}}.stats", sample=SAMPLES),
-#		expand(f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats", sample=SAMPLES),
 #		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
 		expand(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.stidx", sample=SAMPLES),
 		expand(f"{OUTDIR}/round{ROUND}_index.ok"),
@@ -78,6 +73,7 @@ rule round2:
 		f"{OUTDIR}/round2_index.ok",
 		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", sample=SAMPLES)
 
+# Rule qc doesn't work
 rule qc:
 	input:
 #		expand(f"{OUTDIR}/round{ROUND}/qc/multiqc/{{pre}}_multiqc_report.html", pre=config["prefix"])	
@@ -85,8 +81,8 @@ rule qc:
 
 rule round2_index:
 	input:
-		expand(f"{OUTDIR}/round2_{{sample}}_index.ok", sample=SAMPLES)
-#		f"{OUTDIR}/round2_index.ok"
+		expand(f"{OUTDIR}/round2_{{sample}}_index.ok", sample=SAMPLES),
+		f"{OUTDIR}/round2_index.ok"
 
 rule mem_stats:
 	input:

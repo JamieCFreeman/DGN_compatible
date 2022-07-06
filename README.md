@@ -2,6 +2,13 @@
 Pipeline to analyze DNA sequencing data with legacy compatibility for the Pool lab's Drosophila Genome Nexus data.
 
 
+To run:
+1. Create a sample table in the format of "units.tsv" (Tab-delimited table with columns sample, unit, platform, fq1, fq2, RG)
+sample (sample name), unit (could be used to ID samples with multiple sequencing units- not currently implemented), 
+platform ("ILLUMINA" or not), fq1 (path to fq1), fq2 (path to fq2), RG (read group string, eg @RG\tID:13Jan22-1_EF5N_S73\tSM:13Jan22-1_EF5N_S73\tPU:none\tLB:13Jan22-1_EF5N_S73\tPL:ILLUMINA)
+
+2. Edit config.yaml for your project:
+
 Methods description from Lack et al. 2015 Genetics 10.1534/genetics.115.174664:
 
 

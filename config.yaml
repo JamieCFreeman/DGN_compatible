@@ -1,19 +1,29 @@
-sample_table: "units_partial.tsv" 
+#
+# User-specified variables are here in the config file.
+
+# Sample table is required, expected to be tsv
+sample_table: "units.tsv" 
 
 # Prefix for out directory name
-prefix: "EF_testing"
+prefix: "edit_test"
+
+# To test pipeline with small number of reads, set ISTESTING to TRUE
+ISTESTING: "TRUE"
+
+# DGN pipeline has 2 rounds of mapping -> variant calling, after first, sample-specific
+#       genome reference
+ROUND: 2
 
 read_length: 150
 
-# Ploidy
+# Ploidy for variant calling
 ploidy: "2"    # needs to be quoted so it's a string or will have type error
 
-# Genome
-
+# Reference genome path (index files should be here too)
 genome: "../dmel_ref/DmelRef.fasta" 
 
 # For gatk, give full path to jar file
 gatk.jar: "/home/jamie/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar"
 
-# For picard, each function has it's own jar, provide folder containing them
+# For picard, each function has its own jar, provide folder containing them
 picard.jar: "/home/jamie/picard-tools-1.79/picard-tools-1.79"
