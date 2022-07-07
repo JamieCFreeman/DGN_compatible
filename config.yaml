@@ -12,7 +12,7 @@ ISTESTING: "TRUE"
 
 # DGN pipeline has 2 rounds of mapping -> variant calling, after first, sample-specific
 #       genome reference
-ROUND: 2 
+ROUND: 1 
 
 read_length: 150
 
@@ -20,7 +20,7 @@ read_length: 150
 ploidy: "2"    # needs to be quoted so it's a string or will have type error
 
 # Reference genome path (index files should be here too)
-genome: "../dmel_ref/DmelRef.fasta" 
+genome: "/home/jamie//dmel_ref/DmelRef.fasta" 
 
 # For gatk, give full path to jar file
 gatk.jar: "/home/jamie/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar"
