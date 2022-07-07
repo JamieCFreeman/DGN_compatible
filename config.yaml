@@ -12,7 +12,7 @@ ISTESTING: "TRUE"
 
 # DGN pipeline has 2 rounds of mapping -> variant calling, after first, sample-specific
 #       genome reference
-ROUND: 2
+ROUND: 2 
 
 read_length: 150
 

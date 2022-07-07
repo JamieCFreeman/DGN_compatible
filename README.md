@@ -7,7 +7,16 @@ To run:
 sample (sample name), unit (could be used to ID samples with multiple sequencing units- not currently implemented), 
 platform ("ILLUMINA" or not), fq1 (path to fq1), fq2 (path to fq2), RG (read group string, eg @RG\tID:13Jan22-1_EF5N_S73\tSM:13Jan22-1_EF5N_S73\tPU:none\tLB:13Jan22-1_EF5N_S73\tPL:ILLUMINA)
 
-2. Edit config.yaml for your project:
+2. Edit config.yaml for your project. Recommended to first run with the ISTESTING variable set to TRUE- this will subset reads, so the whole
+workflow will run quickly, and you can make sure it runs cleanly before starting.
+
+3. Use snakemake to run with env managment.
+Make sure snakemake is installed in your env. (On Marula, I have a conda env called snakemake). 
+Use the dry run function first (snakemake -n) to make sure the job list looks good.
+You must run with conda (--use-conda --conda-frontend conda flags). Specify cores with -c, and optionally specify memory usage
+with --resources mem_Gb
+snakemake -c48 round1 --use-conda --conda-frontend conda --resources mem_Gb 50
+
 
 Methods description from Lack et al. 2015 Genetics 10.1534/genetics.115.174664:
 

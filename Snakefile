@@ -53,25 +53,27 @@ include:
 	"rules/genome_indexing.smk",
 	"rules/qc.smk"
 
+# Desired output depends on whether we're running round 1 or 2
+index_check = f"{OUTDIR}/round{ROUND}_index.ok"
+test_fq = expand("test/{sample}_1.fq", sample=SAMPLES)
+alt_ref = expand(f"{OUTDIR}/round1/alt_ref_for_chtc/{{sample}}_ref.fasta.tgz", sample=SAMPLES)
+allsites_vcf = expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", sample=SAMPLES)
+
+rule_all_input_list=[index_check]
+round1_input_list=[test_fq, alt_ref]
+round2_input_list=[allsites_vcf]
+
+if ROUND == 1:
+	rule_all_input_list.extend(round1_input_list)
+	print("Doing round 1 mapping")
+elif ROUND == 2:
+	rule_all_input_list.extend(round2_input_list)
+	print("Doing round 2 mapping")
+
 rule all:
 	input:
-#		expand(f"{OUTDIR}/logs/stampy/{{sample}}_dups.txt", sample=SAMPLES),
-		expand(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.stidx", sample=SAMPLES),
-		expand(f"{OUTDIR}/round{ROUND}_index.ok"),
-		expand(f"{OUTDIR}/round{ROUND}/alt_ref/{{sample}}_ref.fasta.bwt", sample=SAMPLES)
+		rule_all_input_list
 
-# Target rules for round 1 & 2
-rule round1:
-	# Produces the updated ref fasta
-	input:
-		expand("test/{sample}_1.fq", sample=SAMPLES),
-		f"{OUTDIR}/round1_index.ok",
-		expand(f"{OUTDIR}/round1/alt_ref_for_chtc/{{sample}}_ref.fasta.tgz", sample=SAMPLES)
-
-rule round2:
-	input:
-		f"{OUTDIR}/round2_index.ok",
-		expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", sample=SAMPLES)
 
 # Rule qc doesn't work
 rule qc:
