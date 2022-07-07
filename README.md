@@ -14,7 +14,7 @@ workflow will run quickly, and you can make sure it runs cleanly before starting
 Make sure snakemake is installed in your env. (On Marula, I have a conda env called snakemake). 
 Use the dry run function first (snakemake -n) to make sure the job list looks good.
 You must run with conda (--use-conda --conda-frontend conda flags). Specify cores with -c, and optionally specify memory usage
-with --resources mem_Gb
+with --resources mem_Gb. <br>
 snakemake -c48 round1 --use-conda --conda-frontend conda --resources mem_Gb 50
 
 
