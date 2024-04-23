@@ -49,9 +49,10 @@ def get_ref_idx(wildcards, ROUND, OUTDIR, idxtype):
 def RG_from_sample(wildcards):
 	return samples_table.loc[wildcards.sample, "RG"]
 
-include: 
-	"rules/genome_indexing.smk",
-	"rules/qc.smk"
+include: "rules/stats.smk"
+#	"rules/genome_indexing.smk",
+#	"rules/qc.smk",
+#	"rules/stats.smk"
 
 # Desired output depends on whether we're running round 1 or 2
 index_check = f"{OUTDIR}/round{ROUND}_index.ok"
@@ -66,14 +67,21 @@ round2_input_list=[allsites_vcf]
 if ROUND == 1:
 	rule_all_input_list.extend(round1_input_list)
 	print("Doing round 1 mapping")
+	print(rule_all_input_list)
 elif ROUND == 2:
 	rule_all_input_list.extend(round2_input_list)
 	print("Doing round 2 mapping")
+
+#rule_all_input_list=['FR_N/round1_index.ok', 'test/6Jul21-1_EF2N_S102_1.fq', 'test/6Jul21-2_EF6N_S103_1.fq', 'FR_N/round1/alt_ref_for_chtc/6Jul21-1_EF2N_S102_ref.fasta.tgz', 'FR_N/round1/alt_ref_for_chtc/6Jul21-2_EF6N_S103_ref.fasta.tgz']
+
 
 rule all:
 	input:
 		rule_all_input_list
 
+rule stats:
+	input:
+		expand(f"{OUTDIR}/round{ROUND}/het_stats/{{sample}}_round{ROUND}_het.txt",sample=SAMPLES)
 
 # Rule qc doesn't work
 rule qc:
@@ -418,3 +426,4 @@ rule tgz_alt_ref:
 		"""
 		tar -C {params.dir} -czf {output} $( basename {input} )
 		"""
+
