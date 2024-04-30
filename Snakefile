@@ -47,11 +47,11 @@ def get_ref_idx(wildcards, ROUND, OUTDIR, idxtype):
 		return "".join(words)
 
 def RG_from_sample(wildcards):
-	return samples_table.loc[wildcards.sample, "RG"]
+	return samples_table.loc[wildcards.sample, "RG"].strip('\'')
 
 include: "rules/stats.smk"
-#	"rules/genome_indexing.smk",
-#	"rules/qc.smk",
+include: "rules/qc.smk"
+include: "rules/genome_indexing.smk",
 #	"rules/stats.smk"
 
 # Desired output depends on whether we're running round 1 or 2
@@ -81,7 +81,8 @@ rule all:
 
 rule stats:
 	input:
-		expand(f"{OUTDIR}/round{ROUND}/het_stats/{{sample}}_round{ROUND}_het.txt",sample=SAMPLES)
+		expand(f"{OUTDIR}/round{ROUND}/het_stats/{{sample}}_round{ROUND}_het.txt",sample=SAMPLES),
+		f"{OUTDIR}/round{ROUND}/inv_calls/inv_snp_freq_table.tsv"
 
 # Rule qc doesn't work
 rule qc:
