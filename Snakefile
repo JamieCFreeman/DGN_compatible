@@ -19,10 +19,13 @@ samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("samp
 
 # Get sample wildcards as a list
 SAMPLES= samples_table['sample'].values.tolist()
+# CHR list needed for fas1k wildcard
+CHR = ["Chr2L", "Chr2R", "Chr3L", "Chr3R", "Chr4", "ChrX", "mtDNA", "Yhet"]
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
 	sample="|".join(samples_table['sample'])
+
 
 def fq_from_sample(wildcards, ISTESTING, READ):
 	if ISTESTING == 'TRUE':
@@ -52,7 +55,7 @@ def RG_from_sample(wildcards):
 include: "rules/stats.smk"
 include: "rules/qc.smk"
 include: "rules/genome_indexing.smk",
-#	"rules/stats.smk"
+include: "rules/fas1k.smk"
 
 # Desired output depends on whether we're running round 1 or 2
 index_check = f"{OUTDIR}/round{ROUND}_index.ok"
@@ -78,6 +81,10 @@ elif ROUND == 2:
 rule all:
 	input:
 		rule_all_input_list
+
+rule fas1k:
+	input:
+		expand(f"{OUTDIR}/round2/fas1k/{{sample}}_round2_{{chr}}_diploid.fas1k", sample=SAMPLES, chr=CHR)	
 
 rule stats:
 	input:
