@@ -64,28 +64,44 @@ rule indel_mask_bed:
 		bedops --range {params.indel_mask_buffer} -u - > {output}
 		"""
 
-rule indel_mask_fas:
+# Need fasta header line for bedtools
+rule add_fas_header:
 	input:
-		bed = f"{OUTDIR}/round1/vcf/{{sample}}_round1_INDELs.bed",
 		fas = f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid.fas"	
 	output:
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid_indelMASK.fas"	
+		temp( f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid.fas.tmp" )
 	run:
 		import sys
 		sys.path.append(r'/home/jamie/FAS1K_utils')
-		from fas1k_utils import arm_to_int
-		arm = arm_to_int(wildcards.chr)
+		import fas1k_utils as f1k
+		arm = f1k.arm_to_int(wildcards.chr)
+		nt  = f1k.read_in(input.fas)
 		with open(output[0], 'w') as f:
-			f.write('\n' + str(arm) + '\n')
+			f.write( '>' + str(arm) + '\n')
+			f.write(nt[0] + '\n')
+
+rule mask_around_indels:
+	input:
+		bed = f"{OUTDIR}/round1/vcf/{{sample}}_round1_INDELs.bed",
+		fas = f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid.fas.tmp"	
+	output:
+		tmp  = temp( f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid_indelMASK.fas.tmp" ),
+		mask = temp( f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid_indelMASK.fas" )	
+	shell:
+		"""
+		bedtools maskfasta -fi {input.fas} -bed {input.bed} -fo {output.tmp}
+		tail -n1 {output.tmp} > {output.mask} # remove fasta header
+		"""
 
 rule wrap_fas1k:
 	input:
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid.fas"
+		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid_indelMASK.fas"
 	output:
 		temp( f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_{{chr}}_diploid.fas1k" )
 	shell:
 		"""
 		perl scripts/wrap_fasta_JCF.pl {input}
+		mv {input}1k {output} # wrap script just globs filename
 		"""
 
 rule mv_fas1k:
