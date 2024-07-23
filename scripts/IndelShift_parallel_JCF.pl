@@ -31,6 +31,9 @@ my $cmd = '';
 #
 my @AllFiles = (@ARGV);
 #
+# Only other edit is commenting out the print message "skipping stuff" when  writing
+# vcf- so many lines of just this...
+#
 ###############################################################
 
 #find correct input files
@@ -236,7 +239,7 @@ print "Finished with indel assessment\n";
 	    else {
 	      if ($IndelType2[$d] eq '+') {
 		if (($PositionX >= $IndelStart2[$d]) && ($PositionX < ($IndelStart2[$d] + $IndelLength2[$d]))) {
-		  print "skipping stuff\n";
+			#  print "skipping stuff\n";
 		}
 		elsif ($PositionX == ($IndelStart2[$d] + $IndelLength2[$d])) {
 		  $AltPos = $NewPos +1;
