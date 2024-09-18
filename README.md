@@ -24,7 +24,7 @@ Once the round 2 mapping is complete, to get .fas1k files, run with rule fas1k:
 snakemake fas1k --use-conda --conda-frontend conda -c48
 
 On fas1k files can also run rule stats to get heteozygosity stats, genotyping of inversion-associated SNPs (use with caution):
-snakemake stats --use-conda --conda-frontend conda -c48
+snakemake stats --use-conda --conda-frontend conda -c48 --resources io=30
 
 Methods description from Lack et al. 2015 Genetics 10.1534/genetics.115.174664:
 
