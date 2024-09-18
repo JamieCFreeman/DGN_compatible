@@ -56,7 +56,7 @@ def get_RG(s):
 	
 def sample_table(d):
 	# Get all R1 fastq files
-	all_files = glob.glob(os.path.join(d, "*R1*fastq.gz"))
+	all_files = glob.glob(os.path.join(d, "*_R1_*fastq.gz"))
 	all_files.sort()
 	
 	# Get info for sample table
