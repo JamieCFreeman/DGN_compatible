@@ -26,7 +26,6 @@ CHR = ["Chr2L", "Chr2R", "Chr3L", "Chr3R", "Chr4", "ChrX", "mtDNA", "Yhet"]
 wildcard_constraints:
 	sample="|".join(samples_table['sample'])
 
-
 def fq_from_sample(wildcards, ISTESTING, READ):
 	if ISTESTING == 'TRUE':
 		words = ["test/" , wildcards.sample, "_", READ, ".fq"]
@@ -65,6 +64,7 @@ allsites_vcf = expand(f"{OUTDIR}/round2/vcf/{{sample}}_round2_SNPs.vcf.gz", samp
 
 rule_all_input_list=[index_check]
 round1_input_list=[test_fq, alt_ref]
+round1_input_list=[alt_ref]
 round2_input_list=[allsites_vcf]
 
 if ROUND == 1:
