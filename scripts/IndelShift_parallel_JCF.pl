@@ -33,7 +33,9 @@ my @AllFiles = (@ARGV);
 #
 # Only other edit is commenting out the print message "skipping stuff" when  writing
 # vcf- so many lines of just this...
-#
+# 2024-08- comment out lines 88/89- system command purge doens't exist, looks like it was a 
+# mac command "Purge can be used to approximate initial boot conditions with a cold disk
+#      buffer cache for performance analysis."
 ###############################################################
 
 #find correct input files
@@ -85,8 +87,8 @@ for ($z = 0; $z < @Files; $z++){
     my @Qual2 = ();
     my @Filter2 = ();
 
-  $cmd = "purge";
-  system($cmd);
+#  $cmd = "purge";
+#  system($cmd);
 
 open U, "<$INDELSin";
 while (<U>){
