@@ -15,8 +15,16 @@ Make sure snakemake is installed in your env. (On Marula, I have a conda env cal
 Use the dry run function first (snakemake -n) to make sure the job list looks good.
 You must run with conda (--use-conda --conda-frontend conda flags). Specify cores with -c, and optionally specify memory usage
 with --resources mem_Gb. <br>
-snakemake -c48 round1 --use-conda --conda-frontend conda --resources mem_Gb 50
+To run rule 'all' for either round 1 or 2 mapping, use:
+snakemake -c48 all --use-conda --conda-frontend conda --resources mem_Gb=56
 
+Round 1 and 2 of the pipeline are not connected here because I typically do the mapping on UW's CHTC cluster- stampy is very slow and benefits from being highly parallelized.  
+
+Once the round 2 mapping is complete, to get .fas1k files, run with rule fas1k:
+snakemake fas1k --use-conda --conda-frontend conda -c48
+
+On fas1k files can also run rule stats to get heteozygosity stats, genotyping of inversion-associated SNPs (use with caution):
+snakemake stats --use-conda --conda-frontend conda -c48
 
 Methods description from Lack et al. 2015 Genetics 10.1534/genetics.115.174664:
 
