@@ -24,14 +24,21 @@ CHR = ["Chr2L", "Chr2R", "Chr3L", "Chr3R", "Chr4", "ChrX", "mtDNA", "Yhet"]
 
 # Constrain sample wildcards to those in sample table
 wildcard_constraints:
-	sample="|".join(samples_table['sample'])
+	sample="|".join(samples_table['sample']),
+	unit="|".join(samples_table['unit'])
 
-def fq_from_sample(wildcards, ISTESTING, READ):
+def fq_from_sample(wildcards, ISTESTING, read=None):
+	# Sometimes we provide read from wildcards, sometimes we want to specify (eg when merging)
+	if read is not None:
+		R = read
+	elif read is None:
+		R = wildcards.read 
 	if ISTESTING == 'TRUE':
-		words = ["test/" , wildcards.sample, "_", READ, ".fq"]
+		words = ["test/" , wildcards.sample, "_", wildcards.unit, '_R', R, ".fq"]
 		return "".join(words)
 	elif ISTESTING == 'FALSE':
-		return samples_table.loc[wildcards.sample, "fq"+ READ]
+		now = samples_table[ (samples_table["sample"] == wildcards.sample) & (samples_table["unit"] == wildcards.unit) ]["fq" + R ].iloc[0]
+		return now
 
 def get_ref_fa(wildcards, ROUND, OUTDIR):
 	if ROUND == 1:
@@ -49,7 +56,13 @@ def get_ref_idx(wildcards, ROUND, OUTDIR, idxtype):
 		return "".join(words)
 
 def RG_from_sample(wildcards):
-	return samples_table.loc[wildcards.sample, "RG"].strip('\'')
+	now = samples_table[ (samples_table["sample"] == wildcards.sample) & (samples_table["unit"] == wildcards.unit) ]["RG"].iloc[0]
+	return now.strip('\'')
+
+def get_sa_units(wildcards, ROUND, OUTDIR):
+	now =  list( samples_table[ samples_table["sample"] == wildcards.sample]["unit"] )
+	bams = [ OUTDIR + '/round' + str(ROUND) + '/stampy/RG_' + wildcards.sample + '_' +  x + '.bam' for x in now ]
+	return bams
 
 include: "rules/stats.smk"
 include: "rules/qc.smk"
@@ -108,57 +121,43 @@ rule mem_stats:
 
 rule test:
 	input:
-		fq1 = lambda wc: fq_from_sample(wc, 'FALSE', '1'),
-		fq2 = lambda wc: fq_from_sample(wc, 'FALSE', '2'),
+		fq = lambda wc: fq_from_sample(wc, 'FALSE'),
 		index_ok = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
-		cut1 = "test/{sample}_1.fq",
-		cut2 = "test/{sample}_2.fq"
+		cut = "test/{sample}_{unit}_R{read}.fq"
 	shell:
-		"zcat {input.fq1} | awk '(NR<=50000)' > {output.cut1}; zcat {input.fq2} | awk '(NR<=50000)' > {output.cut2}"
+		"zcat {input.fq} | awk '(NR<=100000)' > {output.cut}"
 
-rule bwa_aln_1:
+rule bwa_aln:
 	input:
-		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR) #,
-#		index = f"{OUTDIR}/round{ROUND}_index.ok"
+		fq = lambda wc: fq_from_sample(wc, ISTESTING),
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
+		index = ancient( f"{OUTDIR}/round{ROUND}_index.ok" )
 	output:
-		sai1 = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai")
-	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map1.log"
+		sai = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R{{read}}.sai")
+	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}_map{{read}}.log"
 	threads: 10
 	shell:
-		"bwa aln -t {threads} {input.REF} {input.fq1} 2> {log} > {output.sai1}"
-
-rule bwa_aln_2:
-	input:  
-		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR) #,
-#		index = f"{OUTDIR}/round{ROUND}_index.ok"
-	output: 
-		sai2 = temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai")
-	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_map2.log"
-	threads: 10
-	shell:  
-		"bwa aln -t {threads} {input.REF} {input.fq2} 2> {log} > {output.sai2}"
+		"bwa aln -t {threads} {input.REF} {input.fq} 2> {log} > {output.sai}"
 
 rule bwa_sampe:
 	input:
-		sai1 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_1.sai",
-		sai2 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_2.sai",
+		sai1 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R1.sai",
+		sai2 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R2.sai",
 		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
 		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output: 
-		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam")
-	log: f"{OUTDIR}/round{ROUND}/logs/bwa_sampe/{{sample}}_map2.log"
+		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam")
+	log: f"{OUTDIR}/round{ROUND}/logs/bwa_sampe/{{sample}}_{{unit}}_sampe.log"
 	shell:
 		"bwa sampe -P {input.REF} {input.sai1} {input.sai2} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
 
 rule aln_flagstat:
 	input:
-		f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam"
+		f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam"
 	output:
-		f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}.stats"
+		f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
 rule bwa_mem:
@@ -167,29 +166,29 @@ rule bwa_mem:
 		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		f"{OUTDIR}/bwa_mem/{{sample}}.bam" 
+		f"{OUTDIR}/bwa_mem/{{sample}}_{{unit}}.bam" 
 	params: REF = config["genome"]
-	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}.log"
+	log:  f"{OUTDIR}/logs/bwa_mem/{{sample}}_{{unit}}.log"
 	threads: 8
 	shell:
 		"bwa mem -M -t {threads} {input.REF} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
 
 rule flagstat:
 	input:
-		f"{OUTDIR}/bwa_mem/{{sample}}.bam"
+		f"{OUTDIR}/bwa_mem/{{sample}}_{{unit}}.bam"
 	output:
-		f"{OUTDIR}/logs/bwa_mem/{{sample}}.stats"
+		f"{OUTDIR}/logs/bwa_mem/{{sample}}_{{unit}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
 
 rule stampy_map:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}.bam",
+		bam = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}.sam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam")
 	params: stampy = "/opt/bioscript/stampy/stampy.py"
-	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}.log"
+	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.log"
 	conda: "envs/py2.yaml"
 	shell:
 		"python {params.stampy} -g {input.REF} -h {input.REF} --bamkeepgoodreads -M {input.bam} -o {output} 2> {log} "
@@ -198,34 +197,34 @@ rule stampy_map:
 
 rule sam2bam:
 	input:
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}.sam"
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}.bam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam")
 	shell:
 		"samtools view -bS {input} > {output}"
 
 rule stampy_flagstat:
 	input:
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}.bam"
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
 	output:
-		f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}.stats"
+		f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
-		
+
 rule qfilter_bam:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/stampy/{{sample}}.bam",
-		stats = f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}.stats"
+		bam = f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam",
+		stats = f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.stats"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}.bam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam")
 	shell:
 		"samtools view -q 20 -h {input.bam} > {output}"
 
 rule sort_bam:
 	input:
-		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}.bam"
+		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam")
 	shell:
 		"samtools sort {input} > {output}"
 
@@ -250,12 +249,21 @@ rule mark_dups:
 # Function RG_from_sample provides RG info from sample table
 rule add_RG:
 	input:
-		bam = f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_sort.bam"
+		bam = f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam")
+		temp(f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}_{{unit}}.bam")
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
 	shell:
 		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
+
+rule merge_sample_bams:
+	input:
+		lambda wc: get_sa_units(wc, ROUND, OUTDIR)
+	output:
+		bam = f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam"
+	shell:
+		"samtools merge -o {output.bam} {input}"
+	
 
 rule dup_bam_bai:
         input:
