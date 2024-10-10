@@ -64,7 +64,7 @@ def sample_table(d):
 	un  = [ get_unit(x) for x in all_files]
 	pl  = [ "ILLUMINA" for x in all_files ] 
 	fq1 = all_files
-	fq2 = re.sub(r'(?is)_R1_', '_R2_', fq1[0])
+	fq2 = [ re.sub(r'(?is)_R1_', '_R2_', x) for x in all_files ]
 	RG  = [ get_RG(x) for x in all_files ]
 		
 	# Shape into dataframe
