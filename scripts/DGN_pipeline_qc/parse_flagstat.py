@@ -38,6 +38,10 @@ def transform_lines(lines):
 	l = [ x.split(' ')[0] for x in lines ] 
 	return l
 
+def lib_name(s, ext):
+	s1 = s.split('/')[ len(s.split('/'))-1 ]
+	return s1.split(ext)[0]
+
 ###############################################################
 # Class definition
 class Flagstat:
@@ -45,7 +49,7 @@ class Flagstat:
     metrics.filename              = filename
     metrics.raw                   = lines_in(filename)
     metrics.list                  = transform_lines(metrics.raw)
-    metrics.library               = filename.split('.stats')[0]
+    metrics.library               = lib_name(filename, '.stats')
     metrics.total_reads           = int( metrics.list[0] )
     metrics.primary_align         = int( metrics.list[1] )
     metrics.secondary_align       = int( metrics.list[2] )

@@ -26,14 +26,17 @@ def dup_list(lines):
 	i[0] = '"' + i[0] + '"'
 	return i
 
+def lib_name(s):
+	return s.split('/')[ len(s.split('/'))-1 ]
+
 ###############################################################
 # Class definition
 class DuplicationMetrics:
   def __init__(metrics, filename):
-    metrics.filename = filename
-    metrics.raw = lines_in(filename)
-    metrics.list = dup_list(metrics.raw)
-    metrics.library                        = metrics.list[0]
+    metrics.filename                       = filename
+    metrics.raw                            = lines_in(filename)
+    metrics.list                           = dup_list(metrics.raw)
+    metrics.library                        = lib_name(filename)
     metrics.unpaired_reads_examined        = int( metrics.list[1] )
     metrics.read_pairs_examined            = int( metrics.list[2] )
     metrics.secondary_or_supplementary_rds = int( metrics.list[3] )
