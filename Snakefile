@@ -13,6 +13,9 @@ OUTDIR = config["prefix"]
 ISTESTING = config["ISTESTING"]
 # Are you doing round 1 mapping or round 2 mapping?
 ROUND = config["ROUND"]
+CONTAINER_PATH = config["container_path"]
+
+container: CONTAINER_PATH
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
@@ -186,7 +189,8 @@ rule stampy_map:
 		bam = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam",
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam")
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam"
+#		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam")
 	params: stampy = "/opt/bioscript/stampy/stampy.py"
 	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.log"
 	conda: "envs/py2.yaml"
@@ -225,6 +229,7 @@ rule sort_bam:
 		f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam"
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam")
+	conda:  "envs/samtools.yaml"
 	shell:
 		"samtools sort {input} > {output}"
 
@@ -241,10 +246,11 @@ rule mark_dups:
 	conda:  "envs/picard.yaml"
 	resources:
 		mem_Gb = 3
+	log: f"{OUTDIR}/round{ROUND}/logs/gatk/mark_dup/{{sample}}.log"		
 	benchmark:
 		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.markdup.benchmark.txt"
 	shell:
-		"picard MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}"	
+		"picard MarkDuplicates INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics} >& {log}"	
 
 # Function RG_from_sample provides RG info from sample table
 rule add_RG:
@@ -253,6 +259,7 @@ rule add_RG:
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}_{{unit}}.bam")
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
+	conda:  "envs/samtools.yaml"
 	shell:
 		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
 
@@ -261,6 +268,7 @@ rule merge_sample_bams:
 		lambda wc: get_sa_units(wc, ROUND, OUTDIR)
 	output:
 		bam = f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam"
+	conda:  "envs/samtools.yaml"
 	shell:
 		"samtools merge -o {output.bam} {input}"
 	
@@ -270,6 +278,7 @@ rule dup_bam_bai:
                 f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"
         output:
                 temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai")
+	conda:  "envs/samtools.yaml"
         shell:
                 "samtools index {input}"
 
@@ -307,7 +316,8 @@ rule indel_realign:
 	conda: "envs/java8.yaml"
 	resources:
 		mem_Gb = 2
-	benchmark:
+	retries: 2 #sometimes fails on marula, with success on rerun
+	resources:
 		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.indelrealign.benchmark.txt"
 	shell:
 		"""
