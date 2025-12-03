@@ -1,4 +1,11 @@
 
+# Rules for indexing reference genome for both round 1 (the Dmel ref) and
+#	round 2 (sample-level ref) mapping. 
+# 	Need fasta index (fai), indexes for stampy (stidx and sthash),
+#	bwt for bwa, and dict for GATK tools. 
+#	Top level rule creates tmp file round1_index.ok or round2_index.ok
+#	to verify all indexes exist.
+
 rule round1_index_ok:
 # Check for presence of all index files for Dmel ref genome
 	input:
@@ -67,7 +74,6 @@ rule stampy_index:
 		python {params.stampy} -g {input} -H {wildcards.sample}_ref.fasta # build hash table
 		mv $TEMP_FILE.sthash {output.sthash}
 		"""
-
 
 rule gatk_seq_dict:
 	input:
