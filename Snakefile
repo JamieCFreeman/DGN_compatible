@@ -4,6 +4,7 @@
 import pandas as pd
 from snakemake.utils import validate
 from snakemake.utils import min_version
+from snakemake.logging import logger
 min_version("7.0.0")
 
 # Pass through variables from config file
@@ -85,11 +86,11 @@ round2_input_list=[allsites_vcf]
 
 if ROUND == 1:
 	rule_all_input_list.extend(round1_input_list)
-	print("Doing round 1 mapping")
-	print(rule_all_input_list)
+	logger.info("Doing round 1 mapping")
+	logger.info(rule_all_input_list)
 elif ROUND == 2:
 	rule_all_input_list.extend(round2_input_list)
-	print("Doing round 2 mapping")
+	logger.info("Doing round 2 mapping")
 
 #rule_all_input_list=['FR_N/round1_index.ok', 'test/6Jul21-1_EF2N_S102_1.fq', 'test/6Jul21-2_EF6N_S103_1.fq', 'FR_N/round1/alt_ref_for_chtc/6Jul21-1_EF2N_S102_ref.fasta.tgz', 'FR_N/round1/alt_ref_for_chtc/6Jul21-2_EF6N_S103_ref.fasta.tgz']
 
@@ -111,7 +112,8 @@ rule stats:
 rule qc:
 	input:
 #		expand(f"{OUTDIR}/round{ROUND}/qc/multiqc/{{pre}}_multiqc_report.html", pre=config["prefix"])	
-		expand(f"{OUTDIR}/round{ROUND}/qc/bamqc/{{sample}}_stats", sample=SAMPLES)
+#		expand(f"{OUTDIR}/round{ROUND}/qc/bamqc/{{sample}}_stats", sample=SAMPLES)
+		expand(f"{OUTDIR}/round{ROUND}/qc/samtools_cov/{{sample}}_coverage.tsv", sample=SAMPLES)
 
 rule round2_index:
 	input:
@@ -222,7 +224,7 @@ rule qfilter_bam:
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam")
 	shell:
-		"samtools view -q 20 -h {input.bam} > {output}"
+		"samtools view -q 20 -h {input.bam} > {output}; samtools flagstat {output}"
 
 rule sort_bam:
 	input:
@@ -231,7 +233,7 @@ rule sort_bam:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam")
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools sort {input} > {output}"
+		"samtools sort {input} > {output}; samtools flagstat {output}"
 
 # Jeremy filters out unmapped reads next with Picard CleanSam.jar
 #
@@ -261,7 +263,7 @@ rule add_RG:
 	params: RG= lambda wildcards: RG_from_sample(wildcards)
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools addreplacerg -r '{params.RG}' -o {output} {input}"
+		"samtools addreplacerg -r '{params.RG}' -o {output} {input}; samtools flagstat {output}"
 
 rule merge_sample_bams:
 	input:
@@ -270,7 +272,7 @@ rule merge_sample_bams:
 		bam = f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam"
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools merge -o {output.bam} {input}"
+		"samtools merge -o {output.bam} {input}; samtools flagstat {output.bam}"
 	
 
 rule dup_bam_bai:
