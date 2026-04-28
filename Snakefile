@@ -16,8 +16,6 @@ ISTESTING = config["ISTESTING"]
 ROUND = config["ROUND"]
 CONTAINER_PATH = config["container_path"]
 
-container: CONTAINER_PATH
-
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
 
@@ -274,15 +272,14 @@ rule merge_sample_bams:
 	shell:
 		"samtools merge -o {output.bam} {input}; samtools flagstat {output.bam}"
 	
-
 rule dup_bam_bai:
-        input:
-                f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"
-        output:
-                temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai")
-	conda:  "envs/samtools.yaml"
-        shell:
-                "samtools index {input}"
+    input:
+        f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam"
+    output:
+        temp(f"{OUTDIR}/round{ROUND}/stampy/mark_dup/{{sample}}.bam.bai")
+    conda: "envs/samtools.yaml"
+    shell:
+        "samtools index {input}"
 
 #IDENTIFIES INTERVAL TO BE REALIGNED AROUND INDELS
 rule indel_target:
