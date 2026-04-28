@@ -2,3 +2,4 @@
 ./sample_table
 ./results
 ./scripts/__pycache__/
+transfer_commands.sh
