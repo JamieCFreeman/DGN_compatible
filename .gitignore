@@ -1,0 +1,4 @@
+.snakemake/
+./sample_table
+./results
+./scripts/__pycache__/
