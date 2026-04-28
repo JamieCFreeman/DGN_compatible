@@ -40,7 +40,7 @@ rule fas:
 		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr4_diploid.fas", non_empty=True),
 		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_ChrX_diploid.fas", non_empty=True),
 		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_mtDNA_diploid.fas", non_empty=True),
-		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Yhet_diploid.fas"non_empty=True)
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Yhet_diploid.fas", non_empty=True)
 	params:
 		dir = f"{OUTDIR}/round2/shifted_vcf/"
 	resources: io=1 #zipping and unzipping is i/o intensive, want to limit (eg --resources io=30)
