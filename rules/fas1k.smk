@@ -33,16 +33,14 @@ rule fas:
 	input:
 		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_shifted.vcf.gz"
 	output:
-#		lambda wc: get_fas_list(wc, OUTDIR)
-#		expand(f"{OUTDIR}/round2/fas1k/{{sample}}_round2_{chr}_diploid.fas1k", chr=CHR, allow_missing=True)
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr2L_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr2R_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr3L_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr3R_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr4_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_ChrX_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_mtDNA_diploid.fas",
-		f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Yhet_diploid.fas"
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr2L_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr2R_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr3L_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr3R_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Chr4_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_ChrX_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_mtDNA_diploid.fas", non_empty=True),
+		ensure(f"{OUTDIR}/round2/shifted_vcf/{{sample}}_round2_Yhet_diploid.fas"non_empty=True)
 	params:
 		dir = f"{OUTDIR}/round2/shifted_vcf/"
 	resources: io=1 #zipping and unzipping is i/o intensive, want to limit (eg --resources io=30)
