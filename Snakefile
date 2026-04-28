@@ -14,7 +14,6 @@ OUTDIR = config["prefix"]
 ISTESTING = config["ISTESTING"]
 # Are you doing round 1 mapping or round 2 mapping?
 ROUND = config["ROUND"]
-CONTAINER_PATH = config["container_path"]
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
@@ -128,8 +127,9 @@ rule test:
 		index_ok = f"{OUTDIR}/round{ROUND}_index.ok"
 	output:
 		cut = "test/{sample}_{unit}_R{read}.fq"
+	conda: "envs/seqtk.yaml" # GATK needs java 8 (11 default on marula)
 	shell:
-		"zcat {input.fq} | awk '(NR<=100000)' > {output.cut}"
+		"seqtk sample -s100 {input.fq} 10000 > {output.cut}"
 
 rule bwa_aln:
 	input:
@@ -140,6 +140,7 @@ rule bwa_aln:
 		sai = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R{{read}}.sai")
 	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}_map{{read}}.log"
 	threads: 10
+	container: config["mapping_container_path"]
 	shell:
 		"bwa aln -t {threads} {input.REF} {input.fq} 2> {log} > {output.sai}"
 
@@ -209,6 +210,20 @@ rule sam2bam:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam")
 	shell:
 		"samtools view -bS {input} > {output}"
+
+rule validate_stampy_bam:
+	'''Sometimes the bam is corrupt, want to know before deleting intial bam
+	    as temp file'''
+	input:
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
+	output:
+		f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.stampy_bam.ok"
+	conda:  "envs/picard.yaml"
+	shell:
+		"""
+		samtools quickcheck {input}
+		picard MarkDuplicates
+		"""
 
 rule stampy_flagstat:
 	input:

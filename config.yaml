@@ -2,13 +2,16 @@
 # User-specified variables are here in the config file.
 
 # Sample table is required, expected to be tsv
-sample_table: "units.tsv" 
+sample_table: "sample_table/test.tsv" 
 
 # Prefix for out directory name
-prefix: "edit_test"
+prefix: "results/scatter_test"
 
 # To test pipeline with small number of reads, set ISTESTING to TRUE
 ISTESTING: "TRUE"
+
+# path to singularity container
+mapping_container_path: "/home/jamie/containers/DGN_mapping.sif"
 
 # DGN pipeline has 2 rounds of mapping -> variant calling, after first, sample-specific
 #       genome reference
@@ -20,7 +23,7 @@ read_length: 150
 ploidy: "2"    # needs to be quoted so it's a string or will have type error
 
 # Reference genome path (index files should be here too)
-genome: "/home/jamie//dmel_ref/DmelRef.fasta" 
+genome: "/home/jamie/dmel_ref/DmelRef.fasta" 
 
 # For gatk, give full path to jar file
 gatk.jar: "/home/jamie/GenomeAnalysisTK-3.2-2/GenomeAnalysisTK.jar"
