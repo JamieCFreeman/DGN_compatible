@@ -195,7 +195,10 @@ rule stampy_map:
 	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.log"
 	conda: "envs/py2.yaml"
 	shell:
-		"python {params.stampy} -g {input.REF} -h {input.REF} --bamkeepgoodreads -M {input.bam} -o {output} 2> {log} "
+		"""
+		python {params.stampy} -g {input.REF} -h {input.REF} \
+		--bamkeepgoodreads -M {input.bam} -o {output} 2> {log}
+		"""
 # "python2.6 " . $stampy . "stampy.py -g " . $reference . " -h " . $reference . " --bamkeepgoodreads -M " . $FastqFile[$i] . ".bam -o " . $FastqFile[$i] . "_remapped.sam"; 
 # #Stampy MAPPING STEP. THIS IS A RELATIVELY LONG STEP (AS LONG AS 15 HOURS ON SOME OF THE HIGHEST COVERAGE DPGP2 GENOMES)
 
@@ -222,7 +225,7 @@ rule qfilter_bam:
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam")
 	shell:
-		"samtools view -q 20 -h {input.bam} > {output}; samtools flagstat {output}"
+		"samtools view -q 20 -h {input.bam} > {output}"
 
 rule sort_bam:
 	input:
@@ -231,7 +234,7 @@ rule sort_bam:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam")
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools sort {input} > {output}; samtools flagstat {output}"
+		"samtools sort {input} > {output}"
 
 # Jeremy filters out unmapped reads next with Picard CleanSam.jar
 #
@@ -270,7 +273,7 @@ rule merge_sample_bams:
 		bam = f"{OUTDIR}/round{ROUND}/stampy/RG_{{sample}}.bam"
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools merge -o {output.bam} {input}; samtools flagstat {output.bam}"
+		"samtools merge -o {output.bam} {input}"
 	
 rule dup_bam_bai:
     input:
