@@ -1,0 +1,2 @@
+Library	fas1k_Ns	fas1k_het	Duplication_rate	Est_library_size_millions
+29Aug24-1-ZI318N	0.1395410686152427	0.0022338668699	0.183764	18.653925

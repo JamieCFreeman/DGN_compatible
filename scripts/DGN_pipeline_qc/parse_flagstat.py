@@ -2,10 +2,10 @@
 
 # Purpose: 
 # To pull duplication metrics from a metrics file written by 
-#  GATK MarkDuplicates
+#  samtools flagstat
 
 # Input:
-# metrics file as written by GATK markduplicates
+# file written by samtools flagstat
 
 ###############################################################
 # # Example flasgstat output file
@@ -67,6 +67,22 @@ class Flagstat:
     metrics.mate_map_diff_chr     = int( metrics.list[14] )
     metrics.mate_map_diff_chr_MQ  = int( metrics.list[15] )
 
+  def __add__(metrics, other):
+    # To add two Flagstat objects together, sum all numeric attributes.
+    if not isinstance(other, Flagstat):
+      return NotImplemented
+    # create combined object without reading file
+    combined = object.__new__(Flagstat)
+    combined.filename = None
+    combined.raw = None
+    combined.list = None
+    combined.library = f"{metrics.library}+{other.library}"
+    # sum numeric attributes from both objects
+    for k, v in metrics.__dict__.items():
+      if isinstance(v, (int, float)):
+        combined.__dict__[k] = v + getattr(other, k, 0)
+    return combined
+
 ###############################################################
 if __name__ == "__main__":
 	import sys
@@ -78,4 +94,3 @@ if __name__ == "__main__":
 	+ str(round(p1.mapped / p1.total_reads, 4)) + '\t' \
 	+ str(round(p1.properly_paired / p1.total_reads, 4))
 	print( s2)
-
