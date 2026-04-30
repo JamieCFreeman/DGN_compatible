@@ -207,7 +207,8 @@ rule sam2bam:
 	input:
 		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam"
 	output:
-		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam")
+		#temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam")
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
 	shell:
 		"samtools view -bS {input} > {output}"
 
@@ -240,7 +241,7 @@ rule qfilter_bam:
 	output:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}.bam")
 	shell:
-		"samtools view -q 20 -h {input.bam} > {output}"
+		"samtools view -q 20 -h -o {output} {input.bam}"
 
 rule sort_bam:
 	input:
@@ -249,7 +250,7 @@ rule sort_bam:
 		temp(f"{OUTDIR}/round{ROUND}/stampy/qfilter_{{sample}}_{{unit}}_sort.bam")
 	conda:  "envs/samtools.yaml"
 	shell:
-		"samtools sort {input} > {output}"
+		"samtools sort -o {output} {input}"
 
 # Jeremy filters out unmapped reads next with Picard CleanSam.jar
 #
@@ -332,13 +333,14 @@ rule indel_realign:
 	log: f"{OUTDIR}/round{ROUND}/logs/gatk/indel_realigner/{{sample}}.log"
 	conda: "envs/java8.yaml"
 	resources:
-		mem_Gb = 2
+		mem_Gb = 12
 	retries: 2 #sometimes fails on marula, with success on rerun
-	resources:
+	benchmark:
 		f"{OUTDIR}/benchmarks/round{ROUND}/{{sample}}.indelrealign.benchmark.txt"
 	shell:
 		"""
-		java -Xmx8g -jar {params.GATKjar} -T IndelRealigner \
+		java -Xmx16g -XX:+UseParallelGC -XX:ParallelGCThreads=4 -XX:NewRatio=1 \
+			-jar {params.GATKjar} -T IndelRealigner \
 			-targetIntervals {input.intervals} \
 			-R {input.REF} -I {input.bam} -o {output} 2> {log}
 		"""
