@@ -17,6 +17,9 @@ mapping_container_path: "/home/jamie/containers/DGN_mapping.sif"
 #       genome reference
 ROUND: 1 
 
+scatter:
+  chunk_reads: 2000
+
 read_length: 150
 
 # Ploidy for variant calling

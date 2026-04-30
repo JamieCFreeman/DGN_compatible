@@ -1,7 +1,9 @@
 #### 2021-8-1 JCF ####
 # Implementing Justin Lack's Drosophila Genome Nexus pipeline (https://github.com/justin-lack/Drosophila-Genome-Nexus) #
 
+import os
 import pandas as pd
+from snakemake.io import glob_wildcards
 from snakemake.utils import validate
 from snakemake.utils import min_version
 from snakemake.logging import logger
@@ -14,6 +16,8 @@ OUTDIR = config["prefix"]
 ISTESTING = config["ISTESTING"]
 # Are you doing round 1 mapping or round 2 mapping?
 ROUND = config["ROUND"]
+SCATTER_CHUNK_READS = int(config.get("scatter", {}).get("chunk_reads", 2000000))
+SCATTER_CHUNK_LINES = SCATTER_CHUNK_READS * 4
 
 # Read sample table
 samples_table = pd.read_table(config["sample_table"], dtype=str).set_index("sample", drop=False)
@@ -64,6 +68,12 @@ def get_sa_units(wildcards, ROUND, OUTDIR):
 	now =  list( samples_table[ samples_table["sample"] == wildcards.sample]["unit"] )
 	bams = [ OUTDIR + '/round' + str(ROUND) + '/stampy/RG_' + wildcards.sample + '_' +  x + '.bam' for x in now ]
 	return bams
+
+
+def get_scatter_chunks(wildcards):
+	ck = checkpoints.scatter_fastq.get(sample=wildcards.sample, unit=wildcards.unit)
+	pattern = os.path.join(ck.output[0], f"{wildcards.sample}_{wildcards.unit}_R1_chunk{{chunk}}.fq.gz")
+	return glob_wildcards(pattern).chunk
 
 include: "rules/stats.smk"
 include: "rules/qc.smk"
@@ -129,41 +139,102 @@ rule test:
 		cut = "test/{sample}_{unit}_R{read}.fq"
 	conda: "envs/seqtk.yaml" # GATK needs java 8 (11 default on marula)
 	shell:
-		"seqtk sample -s100 {input.fq} 10000 > {output.cut}"
+		"zcat {input.fq} | awk '(NR<=100000)' > {output.cut}"
+
+checkpoint scatter_fastq:
+	input:
+		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
+		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2')
+	output:
+		directory(f"{OUTDIR}/round{ROUND}/bwa_aln/scatter/{{sample}}_{{unit}}")
+	params:
+		chunk_lines = SCATTER_CHUNK_LINES,
+		prefix1 = lambda wc: f"{OUTDIR}/round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}/{wc.sample}_{wc.unit}_R1_chunk",
+		prefix2 = lambda wc: f"{OUTDIR}/round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}/{wc.sample}_{wc.unit}_R2_chunk",
+		outdir = lambda wc: f"{OUTDIR}/round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}"
+	shell:
+		r"""
+		mkdir -p {params.outdir}
+		if [[ "{input.fq1}" == *.gz ]]; then
+			gzip -dc {input.fq1} | split -a 5 --additional-suffix=".fq.gz" -d -l {params.chunk_lines} --filter='gzip > $FILE' - {params.prefix1}
+		else
+			cat {input.fq1} | split -a 5 --additional-suffix=".fq.gz" -d -l {params.chunk_lines} --filter='gzip > $FILE' - {params.prefix1}
+		fi
+		if [[ "{input.fq2}" == *.gz ]]; then
+			gzip -dc {input.fq2} | split -a 5 --additional-suffix=".fq.gz" -d -l {params.chunk_lines} --filter='gzip > $FILE' - {params.prefix2}
+		else
+			cat {input.fq2} | split -a 5 --additional-suffix=".fq.gz" -d -l {params.chunk_lines} --filter='gzip > $FILE' - {params.prefix2}
+		fi
+		"""
 
 rule bwa_aln:
 	input:
-		fq = lambda wc: fq_from_sample(wc, ISTESTING),
+		fq = lambda wc: os.path.join(OUTDIR, f"round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}/{wc.sample}_{wc.unit}_R{wc.read}_chunk{wc.chunk}.fq.gz"),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR),
-		index = ancient( f"{OUTDIR}/round{ROUND}_index.ok" )
+		index = ancient(index_check)
 	output:
-		sai = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R{{read}}.sai")
-	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}_map{{read}}.log"
-	threads: 10
+		sai = temp( f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R{{read}}_chunk{{chunk}}.sai")
+	log: f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}_map{{read}}_chunk{{chunk}}.log"
+	threads: 1
 	container: config["mapping_container_path"]
 	shell:
 		"bwa aln -t {threads} {input.REF} {input.fq} 2> {log} > {output.sai}"
 
 rule bwa_sampe:
 	input:
-		sai1 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R1.sai",
-		sai2 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R2.sai",
-		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
-		fq2 = lambda wc: fq_from_sample(wc, ISTESTING, '2'),
+		sai1 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R1_chunk{{chunk}}.sai",
+		sai2 = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_R2_chunk{{chunk}}.sai",
+		fq1 = lambda wc: os.path.join(OUTDIR, f"round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}/{wc.sample}_{wc.unit}_R1_chunk{wc.chunk}.fq.gz"),
+		fq2 = lambda wc: os.path.join(OUTDIR, f"round{ROUND}/bwa_aln/scatter/{wc.sample}_{wc.unit}/{wc.sample}_{wc.unit}_R2_chunk{wc.chunk}.fq.gz"),
 		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
 	output: 
-		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam")
-	log: f"{OUTDIR}/round{ROUND}/logs/bwa_sampe/{{sample}}_{{unit}}_sampe.log"
+		temp(f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_chunk{{chunk}}.bam")
+	log: f"{OUTDIR}/round{ROUND}/logs/bwa_sampe/{{sample}}_{{unit}}_chunk{{chunk}}_sampe.log"
 	shell:
 		"bwa sampe -P {input.REF} {input.sai1} {input.sai2} {input.fq1} {input.fq2} 2> {log} | samtools view -bS - > {output}"
 
 rule aln_flagstat:
 	input:
-		f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam"
+		f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_chunk{{chunk}}.bam"
 	output:
-		f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}.stats"
+		f"{OUTDIR}/round{ROUND}/logs/bwa_aln/{{sample}}_{{unit}}_chunk{{chunk}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
+
+rule stampy_map:
+	input:
+		bam = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}_chunk{{chunk}}.bam",
+		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
+	output:
+		temp(f"{OUTDIR}/round{ROUND}/stampy/chunks/{{sample}}_{{unit}}_chunk{{chunk}}.sam")
+	params: stampy = "/opt/bioscript/stampy/stampy.py"
+	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}_chunk{{chunk}}.log"
+	conda: "envs/py2.yaml"
+	shell:
+		"""
+		python {params.stampy} -g {input.REF} -h {input.REF} \
+		--bamkeepgoodreads -M {input.bam} -o {output} 2> {log}
+		"""
+
+rule sam2bam:
+	input:
+		f"{OUTDIR}/round{ROUND}/stampy/chunks/{{sample}}_{{unit}}_chunk{{chunk}}.sam"
+	output:
+		temp(f"{OUTDIR}/round{ROUND}/stampy/chunks/{{sample}}_{{unit}}_chunk{{chunk}}.bam")
+	shell:
+		"samtools view -bS {input} > {output}"
+
+rule gather_bam:
+	input:
+		lambda wc: expand(
+			f"{OUTDIR}/round{ROUND}/stampy/chunks/{wc.sample}_{wc.unit}_chunk{{chunk}}.bam",
+			chunk=get_scatter_chunks(wc)
+		)
+	output:
+		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
+	shell:
+		"samtools merge {output} {input}"
+
 rule bwa_mem:
 	input:
 		fq1 = lambda wc: fq_from_sample(wc, ISTESTING, '1'),
@@ -184,47 +255,6 @@ rule flagstat:
 		f"{OUTDIR}/logs/bwa_mem/{{sample}}_{{unit}}.stats"
 	shell:
 		"samtools flagstat {input} > {output}"
-
-rule stampy_map:
-	input:
-		bam = f"{OUTDIR}/round{ROUND}/bwa_aln/{{sample}}_{{unit}}.bam",
-		REF = lambda wc: get_ref_fa(wc, ROUND, OUTDIR)
-	output:
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam"
-#		temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam")
-	params: stampy = "/opt/bioscript/stampy/stampy.py"
-	log: f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.log"
-	conda: "envs/py2.yaml"
-	shell:
-		"""
-		python {params.stampy} -g {input.REF} -h {input.REF} \
-		--bamkeepgoodreads -M {input.bam} -o {output} 2> {log}
-		"""
-# "python2.6 " . $stampy . "stampy.py -g " . $reference . " -h " . $reference . " --bamkeepgoodreads -M " . $FastqFile[$i] . ".bam -o " . $FastqFile[$i] . "_remapped.sam"; 
-# #Stampy MAPPING STEP. THIS IS A RELATIVELY LONG STEP (AS LONG AS 15 HOURS ON SOME OF THE HIGHEST COVERAGE DPGP2 GENOMES)
-
-rule sam2bam:
-	input:
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.sam"
-	output:
-		#temp(f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam")
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
-	shell:
-		"samtools view -bS {input} > {output}"
-
-rule validate_stampy_bam:
-	'''Sometimes the bam is corrupt, want to know before deleting intial bam
-	    as temp file'''
-	input:
-		f"{OUTDIR}/round{ROUND}/stampy/{{sample}}_{{unit}}.bam"
-	output:
-		f"{OUTDIR}/round{ROUND}/logs/stampy/{{sample}}_{{unit}}.stampy_bam.ok"
-	conda:  "envs/picard.yaml"
-	shell:
-		"""
-		samtools quickcheck {input}
-		picard MarkDuplicates
-		"""
 
 rule stampy_flagstat:
 	input:
